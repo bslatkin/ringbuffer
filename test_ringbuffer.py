@@ -49,8 +49,15 @@ class RingBufferTestBase:
 
     def test_one_reader__single_write(self):
         reader = self.ring.new_reader()
+
+        self.assertEqual(0, self.ring.writer.get().index)
         self.ring.try_write(b'first write')
+        self.assertEqual(1, self.ring.writer.get().index)
+
+        self.assertEqual(0, reader.get().index)
         data = self.ring.try_read(reader)
+        self.assertEqual(1, reader.get().index)
+
         self.assertEqual(b'first write', data)
 
     def test_one_reader__ahead_of_writes(self):
@@ -59,6 +66,7 @@ class RingBufferTestBase:
             ringbuffer.WaitingForWriterError,
             self.ring.try_read,
             reader)
+
         self.ring.try_write(b'first write')
         data = self.ring.try_read(reader)
         self.assertEqual(b'first write', data)
@@ -80,6 +88,40 @@ class RingBufferTestBase:
             ringbuffer.WaitingForWriterError,
             self.ring.try_read,
             r2)
+
+    def test_write_conflict__beginning(self):
+        reader = self.ring.new_reader()
+        for i in range(self.ring.slot_count):
+            self.ring.try_write(b'write %d' % i)
+
+        self.assertRaises(
+            ringbuffer.WaitingForReaderError,
+            self.ring.try_write,
+            b'should not work')
+
+        data = self.ring.try_read(reader)
+        self.assertEqual(b'write 0', data)
+
+        self.assertEqual(0, self.ring.writer.get().index)  # Wrapped around
+
+        self.ring.try_write(b'now it works')
+        for i in range(1, self.ring.slot_count):
+            data = self.ring.try_read(reader)
+            self.assertEqual(b'write %d' % i, data)
+
+        self.assertEqual(0, reader.get().index)
+
+        data = self.ring.try_read(reader)
+        self.assertEqual(b'now it works', data)
+
+    def test_write_conflict__end(self):
+        pass
+
+    def test_write_conflict__middle(self):
+        pass
+
+    def test_create_reader_after_writing(self):
+        pass
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):
