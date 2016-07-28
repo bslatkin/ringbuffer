@@ -1,9 +1,29 @@
+"""Ring buffers for multiprocessing.
+
+Allows multiple child Python processes started via the multiprocessing module
+to read from a shared ring buffer in the parent process. For each child, a
+pointer is maintained for the purpose of reading. One pointer is maintained by
+the parent for the purpose of writing. Readers will have to wait if the writer
+hasn't written anything new. The writer will have to wait if the readers
+haven't caught up far enough in the ring buffer to make space.
+
+For more background see:
+https://docs.python.org/3/library/multiprocessing.html
+
+Or read the source:
+https://github.com/python/cpython/tree/3.5/Lib/multiprocessing
+"""
+
 import ctypes
 import multiprocessing
 import struct
 
 
 class Error(Exception):
+    pass
+
+
+class DataTooLargeError(Error, ValueError):
     pass
 
 
@@ -49,7 +69,7 @@ class Pointer:
 
 class RingBuffer:
 
-    def __init__(self, slot_bytes, slot_count):
+    def __init__(self, *, slot_bytes, slot_count):
         self.slot_count = slot_count
         self.array = SlotArray(slot_bytes, slot_count)
         self.writer = Pointer(self.slot_count)
@@ -92,30 +112,33 @@ class RingBuffer:
 
 class SlotArray:
 
-    def __init__(self, slot_bytes, slot_count):
+    def __init__(self, *, slot_bytes, slot_count):
         self.slot_bytes = slot_bytes
         self.slot_count = slot_count
         self.length_bytes = 4
-        self.total_bytes = (slot_bytes + self.length_bytes) * slot_count
-        self.array = multiprocessing.Array(ctypes.c_byte, self.total_bytes)
+        self.slot_type = ctypes.c_byte * (slot_bytes + self.length_bytes)
+        self.array = multiprocessing.Array(self.slot_type, slot_count)
 
     def __getitem__(self, i):
-        start = i * (self.slot_bytes + self.length_bytes)
-        end = start + self.slot_bytes
-        data = self.array[start:end]
-
+        data = memoryview(self.array[i])
         length_prefix = data[:self.length_bytes]
-        length = struct.unpack('>I', length_prefix)
+        (length,) = struct.unpack('>I', length_prefix)
 
-        return data[self.length_bytes:self.length_bytes + length]
+        start = self.length_bytes
+        return data[start:start + length].tobytes()
 
     def __setitem__(self, i, data):
         data_size = len(data)
         if data_size > self.slot_bytes:
-            raise ValueError('%d bytes too big for slot' % data_size)
+            raise DataTooLargeError('%d bytes too big for slot' % data_size)
 
-        start = i * (self.slot_bytes + self.length_bytes)
-        end = start + data_size
+        slot = self.slot_type()
+        length_prefix = struct.pack_into('>I', slot, 0, data_size)
 
-        length_prefix = struct.pack('>I', data_size)
-        self.array[start:end] = length_prefix + data
+        start = self.length_bytes
+        slot[start:start + data_size] = data
+
+        self.array[i] = self.slot_type.from_buffer(slot)
+
+    def __len__(self):
+        return self.slot_count
