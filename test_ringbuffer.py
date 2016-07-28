@@ -34,14 +34,22 @@ class SlotArrayTest(unittest.TestCase):
 
 
 class RingBufferTestBase:
+
+    def setUp(self):
+        self.ring = ringbuffer.RingBuffer(slot_bytes=20, slot_count=10)
+
+    def test_read_then_write(self):
+        reader = self.ring.new_reader()
+        self.ring.try_write(b'first write')
+        data = self.ring.try_read(reader)
+        self.assertEqual(b'first write', data)
+
+
+class LocalTest(RingBufferTestBase, unittest.TestCase):
     pass
 
 
-class LocalTest(unittest.TestCase, RingBufferTestBase):
-    pass
-
-
-class MultiprocessingTest(unittest.TestCase, RingBufferTestBase):
+class MultiprocessingTest(RingBufferTestBase, unittest.TestCase):
     pass
 
 

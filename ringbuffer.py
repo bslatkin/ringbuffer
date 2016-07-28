@@ -47,12 +47,12 @@ class Position:
 
     @property
     def generation(self):
-        self.generation = counter // slot_count
+        return self.counter // self.slot_count
 
 
 class Pointer:
 
-    def __init__(self, slot_count, start=None):
+    def __init__(self, slot_count, *, start=None):
         default = start if start is not None else 0
         self.counter = multiprocessing.Value(ctypes.c_longlong, default)
         self.position = Position(slot_count)
@@ -71,9 +71,15 @@ class RingBuffer:
 
     def __init__(self, *, slot_bytes, slot_count):
         self.slot_count = slot_count
-        self.array = SlotArray(slot_bytes, slot_count)
+        self.array = SlotArray(slot_bytes=slot_bytes, slot_count=slot_count)
         self.writer = Pointer(self.slot_count)
         self.readers = []
+
+    def new_reader(self):
+        writer_position = self.writer.get()
+        reader = Pointer(self.slot_count, start=writer_position.counter)
+        self.readers.append(reader)
+        return reader
 
     def _has_write_conflict(self, position):
         index = position.index
@@ -83,12 +89,14 @@ class RingBuffer:
             # in the ring buffer, but they have different generation numbers.
             # This means the writer can't proceed until some readers have
             # sufficiently caught up.
-            if reader.index == index and reader.generation < generation:
+            reader_position = reader.get()
+            if (reader_position.index == index and
+                    reader_position.generation < generation):
                 return True
 
         return False
 
-    def try_append(self, data):
+    def try_write(self, data):
         position = self.writer.get()
         if self._has_write_conflict(position):
             raise WaitingForReaderError
