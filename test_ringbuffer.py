@@ -55,6 +55,12 @@ class Expecter:
         data = self.ring.try_read(self.pointer)
         self.testcase.assertEqual(expected_data, data)
 
+    def expect_waiting_for_writer(self):
+        self.testcase.assertRaises(
+            ringbuffer.WaitingForWriterError,
+            self.ring.try_read,
+            self.pointer)
+
 
 class AsyncProxy:
 
@@ -66,19 +72,20 @@ class AsyncProxy:
     def run(self):
         while True:
             item = self.in_queue.get()
-            if item == 'done':
-                return
-
-            name, args, kwargs = item
-            print('Running %s(%r, %r)' % (name, args, kwargs))
             try:
-                result = getattr(self.expecter, name)(*args, **kwargs)
-            except Exception as e:
-                logging.exception(
-                    'Problem running %s(*%r, **%r)', name, args, kwargs)
-                self.error_queue.put(e)
+                if item == 'done':
+                    return
 
-            self.in_queue.task_done()
+                name, args, kwargs = item
+                print('Running %s(%r, %r)' % (name, args, kwargs))
+                try:
+                    result = getattr(self.expecter, name)(*args, **kwargs)
+                except Exception as e:
+                    logging.exception(
+                        'Problem running %s(*%r, **%r)', name, args, kwargs)
+                    self.error_queue.put(e)
+            finally:
+                self.in_queue.task_done()
 
     def shutdown(self):
         self.in_queue.put('done')
@@ -106,8 +113,8 @@ class RingBufferTestBase:
     def tearDown(self):
         for proxy in self.proxies:
             proxy.shutdown()
-        # for proxy in self.proxies:
-        #    proxy.in_queue.join()
+        for proxy in self.proxies:
+            proxy.in_queue.join()
         if not self.error_queue.empty():
             raise self.error_queue.get()
 
@@ -143,16 +150,13 @@ class RingBufferTestBase:
         reader.expect_read(b'first write')
         reader.expect_index(1)
 
-    # def test_one_reader__ahead_of_writes(self):
-    #    reader = self.ring.new_reader()
-    #    self.assertRaises(
-    #        ringbuffer.WaitingForWriterError,
-    #        self.ring.try_read,
-    #        reader)
+    def test_one_reader__ahead_of_writes(self):
+        reader = self.new_reader()
+        writer = self.writer()
 
-    #    self.ring.try_write(b'first write')
-    #    data = self.ring.try_read(reader)
-    #    self.assertEqual(b'first write', data)
+        reader.expect_waiting_for_writer()
+        writer.write(b'first write')
+        reader.expect_read(b'first write')
 
     # def test_two_readers__one_behind_one_ahead(self):
     #    r1 = self.ring.new_reader()
