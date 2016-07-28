@@ -61,6 +61,12 @@ class Expecter:
             self.ring.try_read,
             self.pointer)
 
+    def expect_waiting_for_reader(self):
+        self.testcase.assertRaises(
+            ringbuffer.WaitingForReaderError,
+            self.ring.try_write,
+            b'should not work')
+
 
 class AsyncProxy:
 
@@ -77,7 +83,7 @@ class AsyncProxy:
                     return
 
                 name, args, kwargs = item
-                print('Running %s(%r, %r)' % (name, args, kwargs))
+                logging.debug('Running %s(%r, %r)', name, args, kwargs)
                 try:
                     result = getattr(self.expecter, name)(*args, **kwargs)
                 except Exception as e:
@@ -170,30 +176,24 @@ class RingBufferTestBase:
         r2.expect_read(b'first write')
         r2.expect_waiting_for_writer()
 
-    # def test_write_conflict__beginning(self):
-    #    reader = self.ring.new_reader()
-    #    for i in range(self.ring.slot_count):
-    #        self.ring.try_write(b'write %d' % i)
+    def test_write_conflict__beginning(self):
+        reader = self.new_reader()
 
-    #    self.assertRaises(
-    #        ringbuffer.WaitingForReaderError,
-    #        self.ring.try_write,
-    #        b'should not work')
+        writer = self.writer()
+        for i in range(self.ring.slot_count):
+            writer.write(b'write %d' % i)
 
-    #    data = self.ring.try_read(reader)
-    #    self.assertEqual(b'write 0', data)
+        writer.expect_index(0)  # Wrapped around
+        writer.expect_waiting_for_reader()
 
-    #    self.assertEqual(0, self.ring.writer.get().index)  # Wrapped around
+        reader.expect_read(b'write 0')
+        writer.write(b'now it works')
 
-    #    self.ring.try_write(b'now it works')
-    #    for i in range(1, self.ring.slot_count):
-    #        data = self.ring.try_read(reader)
-    #        self.assertEqual(b'write %d' % i, data)
+        for i in range(1, self.ring.slot_count):
+            reader.expect_read(b'write %d' % i)
 
-    #    self.assertEqual(0, reader.get().index)
-
-    #    data = self.ring.try_read(reader)
-    #    self.assertEqual(b'now it works', data)
+        reader.expect_index(0)
+        reader.expect_read(b'now it works')
 
     # def test_write_conflict__end(self):
     #    pass
