@@ -97,8 +97,7 @@ class AsyncProxy:
             self.in_queue.put((name, args, kwargs))
             # Wait for this thread to finish executing the requested behavior
             # before allowing another thread's behavior to run.
-            while not self.in_queue.empty():
-                time.sleep(0.01)
+            self.in_queue.join()
 
         return proxy
 
