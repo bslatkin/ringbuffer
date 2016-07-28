@@ -124,10 +124,10 @@ class RingBufferTestBase:
             raise self.error_queue.get()
 
     def new_queue(self):
-        pass
+        raise NotImplementedError
 
     def run_proxy(self, proxy):
-        pass
+        raise NotImplementedError
 
     def new_reader(self):
         expecter = Expecter(self.ring, self.ring.new_reader(), self)
