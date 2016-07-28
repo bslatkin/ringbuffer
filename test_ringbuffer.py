@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import logging
+import multiprocessing
 import queue
 import threading
 import time
@@ -217,8 +218,15 @@ class LocalTest(RingBufferTestBase, unittest.TestCase):
         thread.start()
 
 
-# class MultiprocessingTest(RingBufferTestBase, unittest.TestCase):
-    # pass
+class MultiprocessingTest(RingBufferTestBase, unittest.TestCase):
+
+    def new_queue(self):
+        return multiprocessing.JoinableQueue()
+
+    def run_proxy(self, proxy):
+        thread = multiprocessing.Process(target=proxy.run)
+        thread.daemon = True
+        thread.start()
 
 
 if __name__ == '__main__':
