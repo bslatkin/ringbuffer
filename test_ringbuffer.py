@@ -16,10 +16,12 @@ class SlotArrayTest(unittest.TestCase):
 
     def test_read_write(self):
         self.array[0] = b'hello'
+        self.array[1] = b''
         self.array[5] = b'how are'
         self.array[9] = b'you doing today?'
 
         self.assertEqual(b'hello', self.array[0])
+        self.assertEqual(b'', self.array[1])
         self.assertEqual(b'how are', self.array[5])
         self.assertEqual(b'you doing today?', self.array[9])
 
