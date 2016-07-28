@@ -157,23 +157,18 @@ class RingBufferTestBase:
         writer.write(b'first write')
         reader.expect_read(b'first write')
 
-    # def test_two_readers__one_behind_one_ahead(self):
-    #    r1 = self.ring.new_reader()
-    #    r2 = self.ring.new_reader()
+    def test_two_readers__one_behind_one_ahead(self):
+        r1 = self.new_reader()
+        r2 = self.new_reader()
 
-    #    self.ring.try_write(b'first write')
+        writer = self.writer()
+        writer.write(b'first write')
 
-    #    self.ring.try_read(r1)
-    #    self.assertRaises(
-    #        ringbuffer.WaitingForWriterError,
-    #        self.ring.try_read,
-    #        r1)
+        r1.expect_read(b'first write')
+        r1.expect_waiting_for_writer()
 
-    #    self.ring.try_read(r2)
-    #    self.assertRaises(
-    #        ringbuffer.WaitingForWriterError,
-    #        self.ring.try_read,
-    #        r2)
+        r2.expect_read(b'first write')
+        r2.expect_waiting_for_writer()
 
     # def test_write_conflict__beginning(self):
     #    reader = self.ring.new_reader()
