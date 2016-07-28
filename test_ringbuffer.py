@@ -37,12 +37,49 @@ class RingBufferTestBase:
 
     def setUp(self):
         self.ring = ringbuffer.RingBuffer(slot_bytes=20, slot_count=10)
+    #    self.sequence = []
 
-    def test_read_then_write(self):
+    # def do(self, func):
+    #    self.sequence.append((func, *args, **kwargs))
+
+    # def run_all(self):
+    #    for func, args, kwargs in self.sequence:
+
+    #    self.sequence = []
+
+    def test_one_reader__single_write(self):
         reader = self.ring.new_reader()
         self.ring.try_write(b'first write')
         data = self.ring.try_read(reader)
         self.assertEqual(b'first write', data)
+
+    def test_one_reader__ahead_of_writes(self):
+        reader = self.ring.new_reader()
+        self.assertRaises(
+            ringbuffer.WaitingForWriterError,
+            self.ring.try_read,
+            reader)
+        self.ring.try_write(b'first write')
+        data = self.ring.try_read(reader)
+        self.assertEqual(b'first write', data)
+
+    def test_two_readers__one_behind_one_ahead(self):
+        r1 = self.ring.new_reader()
+        r2 = self.ring.new_reader()
+
+        self.ring.try_write(b'first write')
+
+        self.ring.try_read(r1)
+        self.assertRaises(
+            ringbuffer.WaitingForWriterError,
+            self.ring.try_read,
+            r1)
+
+        self.ring.try_read(r2)
+        self.assertRaises(
+            ringbuffer.WaitingForWriterError,
+            self.ring.try_read,
+            r2)
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):

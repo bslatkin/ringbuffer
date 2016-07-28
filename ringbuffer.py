@@ -117,6 +117,11 @@ class RingBuffer:
         reader.increment()
         return data
 
+    def force_reader_sync(self):
+        # TODO: Force all readers to have the same position as the writer
+        # and miss any data they hadn't read yet.
+        pass
+
 
 class SlotArray:
 
@@ -125,6 +130,8 @@ class SlotArray:
         self.slot_count = slot_count
         self.length_bytes = 4
         self.slot_type = ctypes.c_byte * (slot_bytes + self.length_bytes)
+        # TODO: Change this to raw array and use a single lock in the
+        # RingBuffer for memory protection?
         self.array = multiprocessing.Array(self.slot_type, slot_count)
 
     def __getitem__(self, i):
