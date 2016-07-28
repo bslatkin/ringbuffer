@@ -109,6 +109,7 @@ class RingBuffer:
         return writer_position.counter <= reader_position.counter
 
     def try_read(self, reader):
+        # TODO: Add a condition here to avoid polling
         position = reader.get()
         if self._has_read_conflict(position):
             raise WaitingForWriterError
