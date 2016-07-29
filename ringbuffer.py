@@ -35,6 +35,10 @@ class WaitingForWriterError(Error):
     pass
 
 
+class WriterFinishedError(Error):
+    pass
+
+
 class Position:
 
     def __init__(self, slot_count):
@@ -73,6 +77,7 @@ class RingBuffer:
         self.slot_count = slot_count
         self.array = SlotArray(slot_bytes=slot_bytes, slot_count=slot_count)
         self.writer = Pointer(self.slot_count)
+        self.active = multiprocessing.Value(ctypes.c_bool, True)
         self.readers = []
 
     def new_reader(self):
@@ -112,7 +117,10 @@ class RingBuffer:
         # TODO: Add a condition here to avoid polling
         position = reader.get()
         if self._has_read_conflict(position):
-            raise WaitingForWriterError
+            if not self.active.value:
+                raise WriterFinishedError
+            else:
+                raise WaitingForWriterError
 
         data = self.array[position.index]
         reader.increment()
@@ -122,6 +130,9 @@ class RingBuffer:
         # TODO: Force all readers to have the same position as the writer
         # and miss any data they hadn't read yet.
         pass
+
+    def close(self):
+        self.active.value = False
 
 
 class SlotArray:

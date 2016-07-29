@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import gc
 import logging
 import multiprocessing
 import queue
@@ -67,6 +68,15 @@ class Expecter:
             self.ring.try_write,
             b'should not work')
 
+    def close(self):
+        self.ring.close()
+
+    def expect_writer_finished(self):
+        self.testcase.assertRaises(
+            ringbuffer.WriterFinishedError,
+            self.ring.try_read,
+            self.pointer)
+
 
 class AsyncProxy:
 
@@ -74,12 +84,14 @@ class AsyncProxy:
         self.expecter = expecter
         self.in_queue = in_queue
         self.error_queue = error_queue
+        self.runner = None
 
     def run(self):
         while True:
             item = self.in_queue.get()
             try:
                 if item == 'done':
+                    logging.debug('Exiting %r', self.runner)
                     return
 
                 name, args, kwargs = item
@@ -122,6 +134,10 @@ class RingBufferTestBase:
             proxy.in_queue.join()
         if not self.error_queue.empty():
             raise self.error_queue.get()
+
+        # Force child processes and pipes to be garbage collected, otherwise
+        # we'll run out of file descriptors.
+        gc.collect()
 
     def new_queue(self):
         raise NotImplementedError
@@ -204,6 +220,39 @@ class RingBufferTestBase:
     # def test_create_reader_after_writing(self):
     #    pass
 
+    def test_close_beginning(self):
+        reader = self.new_reader()
+        writer = self.writer()
+        writer.close()
+        reader.expect_writer_finished()
+
+    def test_close_before_read(self):
+        reader = self.new_reader()
+        writer = self.writer()
+
+        writer.write(b'fill the buffer')
+        writer.close()
+        writer.expect_index(1)
+
+        reader.expect_read(b'fill the buffer')
+        reader.expect_writer_finished()
+        reader.expect_index(1)
+
+    def test_close_after_read(self):
+        reader = self.new_reader()
+        writer = self.writer()
+
+        writer.write(b'fill the buffer')
+
+        reader.expect_read(b'fill the buffer')
+        reader.expect_waiting_for_writer()
+        reader.expect_index(1)
+
+        writer.close()
+        writer.expect_index(1)
+
+        reader.expect_writer_finished()
+
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):
 
@@ -212,6 +261,7 @@ class LocalTest(RingBufferTestBase, unittest.TestCase):
 
     def run_proxy(self, proxy):
         thread = threading.Thread(target=proxy.run)
+        proxy.runner = thread
         thread.daemon = True
         thread.start()
 
@@ -222,10 +272,12 @@ class MultiprocessingTest(RingBufferTestBase, unittest.TestCase):
         return multiprocessing.JoinableQueue()
 
     def run_proxy(self, proxy):
-        thread = multiprocessing.Process(target=proxy.run)
-        thread.daemon = True
-        thread.start()
+        process = multiprocessing.Process(target=proxy.run)
+        proxy.runner = process
+        process.daemon = True
+        process.start()
 
 
 if __name__ == '__main__':
+    logging.getLogger().setLevel(logging.DEBUG)
     unittest.main()
