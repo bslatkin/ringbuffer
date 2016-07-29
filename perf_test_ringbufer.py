@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import collections
 import logging
 import multiprocessing
 import os
@@ -22,21 +23,19 @@ def sleep_generator(duration_seconds, slots_per_second):
     end = start + duration_seconds
     frame_duration = 1 / slots_per_second
 
-    last = start
-    yield
-
     while True:
-        now = time.time()
-        if now >= end:
+        before = time.time()
+        if before >= end:
             return
 
-        last_frame_duration = now - last
-        next_frame_delay = frame_duration - last_frame_duration
+        yield
+
+        after = time.time()
+        duration = after - before
+        next_frame_delay = frame_duration - duration
+
         if next_frame_delay > 0:
             time.sleep(next_frame_delay)
-
-        last = now
-        yield
 
 
 def fill_first(flags, out_ring):
