@@ -10,6 +10,7 @@ import ringbuffer
 
 
 FLAGS = argparse.ArgumentParser()
+FLAGS.add_argument('--debug', action='store_true')
 FLAGS.add_argument('--slot-bytes', action='store', type=int)
 FLAGS.add_argument('--slot-count', action='store', type=int)
 FLAGS.add_argument('--duration-seconds', action='store', type=int)
@@ -25,6 +26,7 @@ def fill_first(flags, out_ring):
     while True:
         now = time.time()
         if now >= end:
+            logging.debug('Exiting fill_first')
             break
 
         for i in range(flags.slots_per_second):
@@ -38,6 +40,8 @@ def fill_first(flags, out_ring):
                               i, now - start)
             else:
                 frames_written += 1
+                if frames_written % 100 == 0:
+                    logging.info('Written %d frames so far', frames_written)
 
             frame_end = time.time()
             last_frame_duration = frame_end - frame_begin
@@ -45,9 +49,6 @@ def fill_first(flags, out_ring):
             if next_frame_delay <= 0:
                 logging.error('Frame %d at time %f is falling behind',
                               i, now - start)
-
-            if frames_written % 100 == 0:
-                logging.info('Written %d frames so far', frames_written)
 
             time.sleep(next_frame_delay)
 
@@ -62,9 +63,9 @@ def second_top(flags, in_ring, reader):
         except ringbuffer.WaitingForWriterError:
             # TODO: Replace this polling with a condition variable
             time.sleep(frame_duration / 2)
-        else:
-            frames_seen += 1
+            continue
 
+        frames_seen += 1
         if frames_seen % 100 == 0:
             logging.info('Seen %d frames so far', frames_seen)
 
@@ -85,7 +86,10 @@ def get_buffer(flags):
 
 def main():
     flags = FLAGS.parse_args()
-    print(repr(flags))
+    print('Starting performance test with flags: %r', flags)
+
+    if flags.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     first = get_buffer(flags)
     # top = get_buffer(flags)
