@@ -27,6 +27,7 @@ def fill_first(flags, out_ring):
         now = time.time()
         if now >= end:
             logging.debug('Exiting fill_first')
+            out_ring.close()
             break
 
         for i in range(flags.slots_per_second):
@@ -64,6 +65,9 @@ def second_top(flags, in_ring, reader):
             # TODO: Replace this polling with a condition variable
             time.sleep(frame_duration / 2)
             continue
+        except ringbuffer.WriterFinishedError:
+            logging.debug('Exiting second_top')
+            return
 
         frames_seen += 1
         if frames_seen % 100 == 0:
