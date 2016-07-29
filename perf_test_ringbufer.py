@@ -17,41 +17,53 @@ FLAGS.add_argument('--duration-seconds', action='store', type=int)
 FLAGS.add_argument('--slots-per-second', action='store', type=int)
 
 
-def fill_first(flags, out_ring):
+def sleep_times(duration_seconds, slots_per_second):
     start = time.time()
-    end = start + flags.duration_seconds
-    frame_duration = 1 / flags.slots_per_second
-    frames_written = 0
+    end = start + duration_seconds
+    frame_duration = 1 / slots_per_second
+
+    last = start
+    yield 0
 
     while True:
         now = time.time()
         if now >= end:
-            logging.debug('Exiting fill_first')
-            out_ring.close()
-            break
+            return
 
-        for i in range(flags.slots_per_second):
-            frame_begin = time.time()
+        last_frame_duration = now - last
+        next_frame_delay = frame_duration - last_frame_duration
+        logging.debug('last duration: %f, delay: %f',
+                      last_frame_duration, next_frame_delay)
 
-            data = os.urandom(flags.slot_bytes)
-            try:
-                out_ring.try_write(data)
-            except ringbuffer.WaitingForReaderError:
-                logging.error('Frame %d at time %f pending reader',
-                              i, now - start)
-            else:
-                frames_written += 1
-                if frames_written % 100 == 0:
-                    logging.info('Written %d frames so far', frames_written)
+        if next_frame_delay <= 0:
+            yield 0
+        else:
+            yield next_frame_delay
 
-            frame_end = time.time()
-            last_frame_duration = frame_end - frame_begin
-            next_frame_delay = frame_duration - last_frame_duration
-            if next_frame_delay <= 0:
-                logging.error('Frame %d at time %f is falling behind',
-                              i, now - start)
+        last = now
 
-            time.sleep(next_frame_delay)
+
+def fill_first(flags, out_ring):
+    it = sleep_times(flags.duration_seconds, flags.slots_per_second)
+
+    for i, next_delay in enumerate(it):
+        if next_delay == 0:
+            if i > 0:
+                logging.error('Frame %d running behind', i)
+        else:
+            time.sleep(next_delay)
+
+        data = os.urandom(flags.slot_bytes)
+        try:
+            out_ring.try_write(data)
+        except ringbuffer.WaitingForReaderError:
+            logging.error('Frame %d pending reader', i)
+        else:
+            if i % 100 == 0:
+                logging.info('Written %d frames so far', i)
+
+    out_ring.close()
+    logging.debug('Exiting fill_first')
 
 
 def second_top(flags, in_ring, reader):
