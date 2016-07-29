@@ -77,6 +77,12 @@ class Expecter:
             self.ring.try_read,
             self.pointer)
 
+    def expect_already_closed(self):
+        self.testcase.assertRaises(
+            ringbuffer.AlreadyClosedError,
+            self.ring.try_write,
+            b'should not work')
+
 
 class AsyncProxy:
 
@@ -252,6 +258,12 @@ class RingBufferTestBase:
         writer.expect_index(1)
 
         reader.expect_writer_finished()
+
+    def test_close_then_write(self):
+        writer = self.writer()
+        writer.write(b'one')
+        writer.close()
+        writer.expect_already_closed()
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):

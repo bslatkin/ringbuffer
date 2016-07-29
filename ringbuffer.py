@@ -39,6 +39,10 @@ class WriterFinishedError(Error):
     pass
 
 
+class AlreadyClosedError(Error):
+    pass
+
+
 class Position:
 
     def __init__(self, slot_count):
@@ -102,6 +106,9 @@ class RingBuffer:
         return False
 
     def try_write(self, data):
+        if not self.active.value:
+            raise AlreadyClosedError
+
         position = self.writer.get()
         if self._has_write_conflict(position):
             raise WaitingForReaderError
