@@ -100,6 +100,10 @@ class Expecter:
     def force_reader_sync(self):
         self.ring.force_reader_sync()
 
+    def expect_try_read_type(self, type_or_class):
+        data = self.ring.try_read(self.pointer)
+        self.testcase.assertTrue(isinstance(data, type_or_class))
+
 
 class AsyncProxy:
 
@@ -209,10 +213,10 @@ class RingBufferTestBase:
     def test_write_string(self):
         writer = self.writer()
         self.start_proxies()
-        self.assertRaises(
-            TypeError,
-            writer.write,
-            'this does not work')
+        self.assertTrue(self.error_queue.empty())
+        writer.write('this does not work')
+        error = self.error_queue.get()
+        self.assertTrue(isinstance(error, TypeError))
 
     def test_write_bytearray(self):
         reader = self.new_reader()
@@ -248,6 +252,14 @@ class RingBufferTestBase:
         reader.expect_index(0)
         reader.expect_read(b'first write', blocking=blocking)
         reader.expect_index(1)
+
+    def test_read_is_bytes(self):
+        reader = self.new_reader()
+        writer = self.writer()
+        self.start_proxies()
+
+        writer.write(b'this works')
+        reader.expect_try_read_type(bytes)
 
     def test_read_single_write_blocking(self):
         self._do_read_single_write(True)
