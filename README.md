@@ -1,4 +1,4 @@
-A single writer, multiple reader [ring buffer](https://en.wikipedia.org/wiki/Circular_buffer) that allows for high throughput data transfer between [multiproccessing](https://docs.python.org/3/library/multiprocessing.html) Python processes.
+A multiple reader [ring buffer](https://en.wikipedia.org/wiki/Circular_buffer) that allows for high throughput data transfer between [multiproccessing](https://docs.python.org/3/library/multiprocessing.html) Python processes.
 
 The [`RingBuffer`](ringbuffer.py) data structure's performance is primarily bound by the behavior of the [Lock class](https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Lock), which is a Kernel semaphore under the covers. The lock is held during all reading and writing operations, meaning lock contention dominates as the number of readers increases. Memory performance isn't an issue because all data is transferred through [mmap'ed buffers](https://en.wikipedia.org/wiki/Mmap#Memory_visibility).
 
