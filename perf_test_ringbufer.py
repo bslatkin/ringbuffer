@@ -147,6 +147,7 @@ def print_process_stats(process, flags, slots, elapsed):
           (slots_per_second, percent_wrong))
 
 
+#@profile
 def writer(flags, out_ring):
     print_every = flags.writes_per_second
 
@@ -181,6 +182,7 @@ def burn_cpu(milliseconds):
             random.random() ** 1 / 2
 
 
+#@profile
 def reader(flags, in_ring, reader):
     print_every = flags.writes_per_second
     read_duration = 1 / flags.writes_per_second
