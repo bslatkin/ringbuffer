@@ -5,6 +5,7 @@ import collections
 import logging
 import multiprocessing
 import os
+import random
 import time
 
 import ringbuffer
@@ -30,7 +31,7 @@ FLAGS.add_argument('--writes-per-second', action='store',
 def sleep_generator(duration_seconds, writes_per_second):
     start = time.time()
     end = start + duration_seconds
-    frame_duration = 1 / writes_per_second
+    target_duration = 1 / writes_per_second
 
     while True:
         before = time.time()
@@ -40,28 +41,69 @@ def sleep_generator(duration_seconds, writes_per_second):
         yield
 
         after = time.time()
-        duration = after - before
-        next_frame_delay = frame_duration - duration
+        # TODO: Keep an average duration to better approximate the processing
+        # time and keep the sleep time stable.
+        last_duration = after - before
+        next_delay = target_duration - last_duration
 
-        if next_frame_delay > 0:
-            time.sleep(next_frame_delay)
+        if next_delay > 0:
+            time.sleep(next_delay)
+
+
+RANDOM_DATA = os.urandom(10 * 10**6)
+
+
+def random_data(num_bytes):
+    assert num_bytes < len(RANDOM_DATA)
+    index = random.randint(0, len(RANDOM_DATA) - num_bytes)
+    return RANDOM_DATA[index:index + num_bytes]
+
+
+class Timing:
+
+    def __init__(self, now=time.time):
+        self.now = now
+        self.start = None
+        self.end = None
+        self.duration = None
+
+    def __enter__(self):
+        self.start = self.now()
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        self.end = self.now()
+        self.duration = self.end - self.start
+        return False
+
+
+def print_writer_stats(flags, writes, elapsed):
+    print('Wrote %d slots in %f seconds' % (writes, elapsed.duration))
+    writes_per_second = writes / elapsed.duration
+    delta = writes_per_second - flags.writes_per_second
+    percent_wrong = 100 * delta / flags.writes_per_second
+    print('%f writes/second, %.1f%% relative to target' %
+          (writes_per_second, percent_wrong))
 
 
 def writer(flags, out_ring):
     print_every = flags.writes_per_second
-    it = sleep_generator(flags.duration_seconds, flags.writes_per_second)
 
-    for i, _ in enumerate(it):
-        data = os.urandom(flags.slot_bytes)
-        try:
-            out_ring.try_write(data)
-        except ringbuffer.WaitingForReaderError:
-            logging.error('Write %d pending readers', i)
-        else:
-            if i and i % print_every == 0:
-                logging.info('Wrote %d slots so far', i)
+    with Timing() as elapsed:
+        it = sleep_generator(flags.duration_seconds, flags.writes_per_second)
+        for i, _ in enumerate(it):
+            data = random_data(flags.slot_bytes)
+            try:
+                out_ring.try_write(data)
+            except ringbuffer.WaitingForReaderError:
+                logging.error('Write %d pending readers', i)
+            else:
+                if i and i % print_every == 0:
+                    logging.info('Wrote %d slots so far', i)
 
-    out_ring.close()
+        out_ring.close()
+
+    print_writer_stats(flags, i, elapsed)
     logging.debug('Exiting writer')
 
 

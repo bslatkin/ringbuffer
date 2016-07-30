@@ -15,6 +15,7 @@ https://github.com/python/cpython/tree/3.5/Lib/multiprocessing
 """
 
 import ctypes
+import functools
 import multiprocessing
 import struct
 
@@ -62,12 +63,11 @@ class Pointer:
 
     def __init__(self, slot_count, *, start=None):
         default = start if start is not None else 0
-        self.counter = multiprocessing.Value(ctypes.c_longlong, default)
+        self.counter = multiprocessing.RawValue(ctypes.c_longlong, default)
         self.position = Position(slot_count)
 
     def increment(self):
-        with self.counter.get_lock():
-            self.counter.value += 1
+        self.counter.value += 1
 
     def get(self):
         # Avoid reallocating Position repeatedly.
@@ -81,8 +81,9 @@ class RingBuffer:
         self.slot_count = slot_count
         self.array = SlotArray(slot_bytes=slot_bytes, slot_count=slot_count)
         self.writer = Pointer(self.slot_count)
-        self.active = multiprocessing.Value(ctypes.c_bool, True)
+        self.active = multiprocessing.RawValue(ctypes.c_bool, True)
         self.readers = []
+        self.lock = multiprocessing.Lock()
 
     def new_reader(self):
         writer_position = self.writer.get()
@@ -106,15 +107,16 @@ class RingBuffer:
         return False
 
     def try_write(self, data):
-        if not self.active.value:
-            raise AlreadyClosedError
+        with self.lock:
+            if not self.active.value:
+                raise AlreadyClosedError
 
-        position = self.writer.get()
-        if self._has_write_conflict(position):
-            raise WaitingForReaderError
+            position = self.writer.get()
+            if self._has_write_conflict(position):
+                raise WaitingForReaderError
 
-        self.array[position.index] = data
-        self.writer.increment()
+            self.array[position.index] = data
+            self.writer.increment()
 
     def _has_read_conflict(self, reader_position):
         writer_position = self.writer.get()
@@ -122,16 +124,17 @@ class RingBuffer:
 
     def try_read(self, reader):
         # TODO: Add a condition here to avoid polling
-        position = reader.get()
-        if self._has_read_conflict(position):
-            if not self.active.value:
-                raise WriterFinishedError
-            else:
-                raise WaitingForWriterError
+        with self.lock:
+            position = reader.get()
+            if self._has_read_conflict(position):
+                if not self.active.value:
+                    raise WriterFinishedError
+                else:
+                    raise WaitingForWriterError
 
-        data = self.array[position.index]
-        reader.increment()
-        return data
+            data = self.array[position.index]
+            reader.increment()
+            return data
 
     def force_reader_sync(self):
         # TODO: Force all readers to have the same position as the writer
@@ -139,7 +142,8 @@ class RingBuffer:
         pass
 
     def close(self):
-        self.active.value = False
+        with self.lock:
+            self.active.value = False
 
 
 class SlotArray:
@@ -149,9 +153,7 @@ class SlotArray:
         self.slot_count = slot_count
         self.length_bytes = 4
         self.slot_type = ctypes.c_byte * (slot_bytes + self.length_bytes)
-        # TODO: Change this to raw array and use a single lock in the
-        # RingBuffer for memory protection?
-        self.array = multiprocessing.Array(self.slot_type, slot_count)
+        self.array = multiprocessing.RawArray(self.slot_type, slot_count)
 
     def __getitem__(self, i):
         data = memoryview(self.array[i])
