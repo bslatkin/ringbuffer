@@ -52,6 +52,10 @@ class Expecter:
     def write(self, data):
         self.ring.try_write(data)
 
+    def write_memory_view(self, data):
+        view = memoryview(data)
+        self.ring.try_write(view)
+
     def _get_read_func(self, blocking):
         if blocking:
             return self.ring.blocking_read
@@ -196,6 +200,41 @@ class RingBufferTestBase:
         proxy = AsyncProxy(expecter, self.new_queue(), self.error_queue)
         self.proxies.append(proxy)
         return proxy
+
+    def test_write_bytes(self):
+        writer = self.writer()
+        self.start_proxies()
+        writer.write(b'this works')
+
+    def test_write_string(self):
+        writer = self.writer()
+        self.start_proxies()
+        self.assertRaises(
+            TypeError,
+            writer.write,
+            'this does not work')
+
+    def test_write_bytearray(self):
+        reader = self.new_reader()
+        writer = self.writer()
+        self.start_proxies()
+
+        byte_list = [124, 129, 92, 3, 97]
+        data = bytearray(byte_list)
+        writer.write(data)
+
+        expected_bytes = b'|\x81\\\x03a'
+        self.assertListEqual(list(expected_bytes), byte_list)
+        reader.expect_read(expected_bytes)
+
+    def test_write_memoryview(self):
+        reader = self.new_reader()
+        writer = self.writer()
+        self.start_proxies()
+
+        data = b'|\x81\\\x03a'
+        writer.write_memory_view(data)
+        reader.expect_read(data)
 
     def _do_read_single_write(self, blocking):
         reader = self.new_reader()
