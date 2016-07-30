@@ -64,6 +64,8 @@ def sleep_generator(duration_seconds, writes_per_second):
     end = start + duration_seconds
     target_duration = 1 / writes_per_second
 
+    seen_durations = collections.deque(maxlen=10)
+
     while True:
         before = time.time()
         if before >= end:
@@ -72,17 +74,21 @@ def sleep_generator(duration_seconds, writes_per_second):
         yield
 
         after = time.time()
-        # TODO: Keep an average duration to better approximate the processing
-        # time and keep the sleep time stable.
         last_duration = after - before
-        next_delay = target_duration - last_duration
+        # Keep an average duration to better approximate the processing
+        # time and keep the sleep time stable. Otherwise the variability will
+        # cause this method to oversleep.
+        seen_durations.append(last_duration)
+
+        avg_duration = sum(seen_durations) / len(seen_durations)
+        next_delay = target_duration - avg_duration
 
         if next_delay > 0:
             time.sleep(next_delay)
 
 
 # Using a memoryview prevents copying when random_data slices this value.
-_CACHED_RANDOM_DATA = memoryview(os.urandom(10 * 10**6))
+_CACHED_RANDOM_DATA = memoryview(10 * os.urandom(10 * 10**6))
 
 
 def random_data(num_bytes):
@@ -91,7 +97,6 @@ def random_data(num_bytes):
     We do this because os.urandom can be very slow and that's not what this
     code is trying to load test.
     """
-    assert num_bytes < len(_CACHED_RANDOM_DATA)
     index = random.randint(0, len(_CACHED_RANDOM_DATA) - num_bytes)
     return _CACHED_RANDOM_DATA[index:index + num_bytes]
 
