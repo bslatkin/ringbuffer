@@ -1,17 +1,6 @@
 #!/usr/bin/env python3
 
-"""Performance test of the RingBuffer class.
-
-Example invocation:
-
-./perf_test_ringbufer.py \
-    --debug \
-    --slot-bytes=1000000 \
-    --slots=100 \
-    --duration-seconds=10 \
-    --writes-per-second=30 \
-    --readers=5
-"""
+"""Performance test of the RingBuffer class."""
 
 import argparse
 import collections
