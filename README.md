@@ -16,7 +16,7 @@ Example that shows good behavior:
     --readers=5
 ```
 
-Example that shows that too many readers will slow the systemm down due to lock contention:
+Example that shows that too many readers will slow the system down due to lock contention:
 
 ```
 ./perf_test_ringbuffer.py \
@@ -28,7 +28,7 @@ Example that shows that too many readers will slow the systemm down due to lock 
     --readers=50
 ```
 
-Example that shows how the writer will fall behind its target rate when the requested data transfer rate is too high:
+Example that shows how the writer will fall behind its target rate when the requested data transfer rate is too high for the memory performance of the machine:
 
 ```
 ./perf_test_ringbuffer.py \
