@@ -74,10 +74,28 @@ class Pointer:
         self.position.counter = self.counter.value
         return self.position
 
+    def set(self, counter):
+        self.counter.value = counter
+
 
 class RingBuffer:
+    """Circular buffer class accessible to multiple threads or child processes.
+
+    All methods are thread safe. Multiple readers and writers are permitted.
+    Before kicking off multiprocessing.Process instances, first allocate all
+    of the readers you'll need with new_reader() and pass the Pointer value
+    returned by that method to the multiprocessing.Process constructor along
+    with the RingBuffer constructor. Calling new_reader() from a child
+    multiprocessing.Process will not work.
+    """
 
     def __init__(self, *, slot_bytes, slot_count):
+        """Initializer.
+
+        Args:
+            slot_bytes: The maximum size of slots in the buffer.
+            slot_count: How many slots should be in the buffer.
+        """
         self.slot_count = slot_count
         self.array = SlotArray(slot_bytes=slot_bytes, slot_count=slot_count)
         self.writer = Pointer(self.slot_count)
@@ -87,6 +105,11 @@ class RingBuffer:
         self.condition = multiprocessing.Condition(self.lock)
 
     def new_reader(self):
+        """Returns a new unique reader into the buffer.
+
+        This must only be called in the parent process. It must not be
+        called in a child multiprocessing.Process. See class docstring.
+        """
         with self.lock:
             writer_position = self.writer.get()
             reader = Pointer(self.slot_count, start=writer_position.counter)
@@ -109,6 +132,23 @@ class RingBuffer:
         return False
 
     def try_write(self, data):
+        """Tries to write the next slot, but will not block.
+
+        Once a successful write occurs, all pending blocking_read() calls
+        will be woken up to consume the newly written slot.
+
+        Args:
+            data: Bytes to write in the next available slot. Must be
+                less than or equal to slot_bytes in size.
+
+        Raises:
+            WaitingForReaderError: If all of the slots are full and we need
+                to wait for readers to catch up before there will be
+                sufficient room to write more data. This is a sign that
+                the readers can't keep up with the writer. Consider calling
+                force_reader_sync() if you need to force the readers to
+                catch up, but beware that means they will miss data.
+        """
         with self.condition:
             if not self.active.value:
                 raise AlreadyClosedError
@@ -139,10 +179,37 @@ class RingBuffer:
         return data
 
     def try_read(self, reader):
+        """Tries to read the next slot for a reader, but will not block.
+
+        Args:
+            reader: Position previously returned by the call to new_reader().
+
+        Returns:
+            bytes of the data from the slot.
+
+        Raises:
+            WriterFinishedError: If the RingBuffer was closed before this
+                read operation began.
+            WaitingForWriterError: If the given reader has already consumed
+                all the data in the ring buffer and would need to block in
+                order to wait for new data to arrive.
+        """
         with self.lock:
             return self._try_read_no_lock(reader)
 
     def blocking_read(self, reader):
+        """Reads the next slot for a reader, blocking if it isn't filled yet.
+
+        Args:
+            reader: Position previously returned by the call to new_reader().
+
+        Returns:
+            bytes of the data from the slot.
+
+        Raises:
+            WriterFinishedError: If the RingBuffer was closed while waiting
+                to read the next operation.
+        """
         with self.condition:
             while True:
                 try:
@@ -151,19 +218,39 @@ class RingBuffer:
                     self.condition.wait()
 
     def force_reader_sync(self):
-        # TODO: Force all readers to have the same position as the writer
-        # and miss any data they hadn't read yet.
-        pass
+        """Forces all readers to skip to the position of the writer."""
+        with self.condition:
+            writer_position = self.writer.get()
+
+            for reader in self.readers:
+                reader.set(writer_position.counter)
+
+            self.condition.notify_all()
 
     def close(self):
+        """Called by the writer when no more data is expected to be written.
+
+        Will cause a WriterFinishedError exception to be raised by any
+        blocking read calls or subsequent calls to read.
+        """
         with self.condition:
             self.active.value = False
             self.condition.notify_all()
 
 
 class SlotArray:
+    """Fast array of indexable buffers backed by shared memory.
+
+    Assumes locking happens elsewhere.
+    """
 
     def __init__(self, *, slot_bytes, slot_count):
+        """Initializer.
+
+        Args:
+            slot_bytes: How big each buffer in the array should be.
+            slot_count: How many buffers should be in the array.
+        """
         self.slot_bytes = slot_bytes
         self.slot_count = slot_count
         self.length_bytes = 4
