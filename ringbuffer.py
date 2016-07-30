@@ -176,6 +176,9 @@ class SlotArray:
         (length,) = struct.unpack('>I', length_prefix)
 
         start = self.length_bytes
+        # This must create a copy because we want the writer to be able to
+        # overwrite this slot as soon as the data has been retrieved by all
+        # readers.
         return data[start:start + length].tobytes()
 
     def __setitem__(self, i, data):
@@ -183,13 +186,11 @@ class SlotArray:
         if data_size > self.slot_bytes:
             raise DataTooLargeError('%d bytes too big for slot' % data_size)
 
-        slot = self.slot_type()
-        length_prefix = struct.pack_into('>I', slot, 0, data_size)
-
+        # Avoid copying!
+        slot_view = memoryview(self.array[i]).cast('B')
+        struct.pack_into('>I', slot_view, 0, data_size)
         start = self.length_bytes
-        slot[start:start + data_size] = data
-
-        self.array[i] = self.slot_type.from_buffer(slot)
+        slot_view[start:start + data_size] = data
 
     def __len__(self):
         return self.slot_count

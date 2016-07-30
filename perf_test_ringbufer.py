@@ -15,9 +15,12 @@ Example invocation:
 
 import argparse
 import collections
+import cProfile
+import functools
 import logging
 import multiprocessing
 import os
+import pstats
 import random
 import time
 
@@ -39,6 +42,21 @@ FLAGS.add_argument('--readers', action='store', type=int, required=True)
 
 FLAGS.add_argument('--writes-per-second', action='store',
                    type=int, required=True)
+
+
+def profile(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        profiler = cProfile.Profile()
+        try:
+            return profiler.runcall(func, *args, **kwargs)
+        finally:
+            stats = pstats.Stats(profiler)
+            stats.strip_dirs()
+            stats.sort_stats('tottime')
+            stats.print_stats()
+
+    return wrapper
 
 
 def sleep_generator(duration_seconds, writes_per_second):
@@ -63,7 +81,8 @@ def sleep_generator(duration_seconds, writes_per_second):
             time.sleep(next_delay)
 
 
-RANDOM_DATA = os.urandom(10 * 10**6)
+# Using a memoryview prevents copying when random_data slices this value.
+_CACHED_RANDOM_DATA = memoryview(os.urandom(10 * 10**6))
 
 
 def random_data(num_bytes):
@@ -72,9 +91,9 @@ def random_data(num_bytes):
     We do this because os.urandom can be very slow and that's not what this
     code is trying to load test.
     """
-    assert num_bytes < len(RANDOM_DATA)
-    index = random.randint(0, len(RANDOM_DATA) - num_bytes)
-    return RANDOM_DATA[index:index + num_bytes]
+    assert num_bytes < len(_CACHED_RANDOM_DATA)
+    index = random.randint(0, len(_CACHED_RANDOM_DATA) - num_bytes)
+    return _CACHED_RANDOM_DATA[index:index + num_bytes]
 
 
 class Timing:
