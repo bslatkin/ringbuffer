@@ -251,7 +251,7 @@ class RingBufferTestBase:
     def test_two_reads_one_behind_one_ahead_non_blocking(self):
         self._do_two_reads_one_behind_one_ahead(False)
 
-    def test_write_conflict__beginning(self):
+    def test_write_conflict_first_slot(self):
         reader = self.new_reader()
         writer = self.writer()
         self.start_proxies()
@@ -259,7 +259,11 @@ class RingBufferTestBase:
         for i in range(self.ring.slot_count):
             writer.write(b'write %d' % i)
 
-        writer.expect_index(0)  # Wrapped around
+        # The writer has wrapped around and is now waiting for the reader
+        # to free up a slot. They have the same index, but are different
+        # generations.
+        reader.expect_index(0)
+        writer.expect_index(0)
         writer.expect_waiting_for_reader()
 
         reader.expect_read(b'write 0')
@@ -271,14 +275,48 @@ class RingBufferTestBase:
         reader.expect_index(0)
         reader.expect_read(b'now it works')
 
-    # def test_write_conflict__end(self):
-    #    pass
+    def test_write_conflict_last_slot(self):
+        reader = self.new_reader()
+        writer = self.writer()
+        self.start_proxies()
 
-    # def test_write_conflict__middle(self):
-    #    pass
+        last_slot = self.ring.slot_count - 1
+        self.assertGreater(last_slot, 0)
 
-    # def test_create_reader_after_writing(self):
-    #    pass
+        for i in range(last_slot):
+            data = b'write %d' % i
+            writer.write(data)
+            reader.expect_read(data)
+
+        writer.expect_index(last_slot)
+        reader.expect_index(last_slot)
+
+        # The reader's pointed at the last slot, now wrap around the writer
+        # to catch up. They'll have the same index, but different generation
+        # numbers.
+        for i in range(self.ring.slot_count):
+            data = b'write %d' % (self.ring.slot_count + i)
+            writer.write(data)
+
+        reader.expect_index(last_slot)
+        writer.expect_index(last_slot)
+        writer.expect_waiting_for_reader()
+
+        reader.expect_read(b'write 10')
+        writer.write(b'now it works')
+        writer.expect_index(0)
+        reader.expect_index(0)
+
+    def test_create_reader_after_writing(self):
+        writer = self.writer()
+        self.start_proxies()
+
+        self.new_reader()  # No error because no writes happened yet.
+
+        writer.write(b'hello')
+        self.assertRaises(
+            ringbuffer.MustCreatedReadersBeforeWritingError,
+            self.new_reader)
 
     def _do_read_after_close_beginning(self, blocking):
         reader = self.new_reader()
@@ -382,12 +420,6 @@ class RingBufferTestBase:
         writer.force_reader_sync()
         r1.expect_index(3)
         r2.expect_index(3)
-
-    def test_force_reader_sync_when_blocking(self):
-        pass
-
-    def test_force_reader_sync_when_blocking(self):
-        pass
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):

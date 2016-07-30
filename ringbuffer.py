@@ -44,6 +44,10 @@ class AlreadyClosedError(Error):
     pass
 
 
+class MustCreatedReadersBeforeWritingError(Error):
+    pass
+
+
 class Position:
 
     def __init__(self, slot_count):
@@ -108,10 +112,15 @@ class RingBuffer:
         """Returns a new unique reader into the buffer.
 
         This must only be called in the parent process. It must not be
-        called in a child multiprocessing.Process. See class docstring.
+        called in a child multiprocessing.Process. See class docstring. To
+        enforce this policy, no readers may be allocated after the first
+        write has occurred.
         """
         with self.lock:
             writer_position = self.writer.get()
+            if writer_position.counter > 0:
+                raise MustCreatedReadersBeforeWritingError
+
             reader = Pointer(self.slot_count, start=writer_position.counter)
             self.readers.append(reader)
             return reader
