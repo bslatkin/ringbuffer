@@ -93,6 +93,9 @@ class Expecter:
             self.ring.try_write,
             b'should not work')
 
+    def force_reader_sync(self):
+        self.ring.force_reader_sync()
+
 
 class AsyncProxy:
 
@@ -128,6 +131,10 @@ class AsyncProxy:
         func = getattr(self.expecter, name)
 
         def proxy(*args, **kwargs):
+            self.expecter.testcase.assertTrue(
+                self.runner,
+                'Must call start_proxies() before setting test expectations')
+
             # This queue is used to sequence operations between functions
             # that are running asynchronously (threads or processes).
             self.in_queue.put((name, args, kwargs))
@@ -156,9 +163,11 @@ class RingBufferTestBase:
 
     def tearDown(self):
         for proxy in self.proxies:
-            proxy.shutdown()
+            if proxy.runner:
+                proxy.shutdown()
         for proxy in self.proxies:
-            proxy.in_queue.join()
+            if proxy.runner:
+                proxy.in_queue.join()
         if not self.error_queue.empty():
             raise self.error_queue.get()
 
@@ -172,23 +181,26 @@ class RingBufferTestBase:
     def run_proxy(self, proxy):
         raise NotImplementedError
 
+    def start_proxies(self):
+        for proxy in self.proxies:
+            self.run_proxy(proxy)
+
     def new_reader(self):
         expecter = Expecter(self.ring, self.ring.new_reader(), self)
         proxy = AsyncProxy(expecter, self.new_queue(), self.error_queue)
         self.proxies.append(proxy)
-        self.run_proxy(proxy)
         return proxy
 
     def writer(self):
         expecter = Expecter(self.ring, self.ring.writer, self)
         proxy = AsyncProxy(expecter, self.new_queue(), self.error_queue)
         self.proxies.append(proxy)
-        self.run_proxy(proxy)
         return proxy
 
     def _do_read_single_write(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
+        self.start_proxies()
 
         writer.expect_index(0)
         writer.write(b'first write')
@@ -207,6 +219,7 @@ class RingBufferTestBase:
     def _do_read_ahead_of_writes(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
+        self.start_proxies()
 
         reader.expect_waiting_for_writer()
         writer.write(b'first write')
@@ -221,8 +234,9 @@ class RingBufferTestBase:
     def _do_two_reads_one_behind_one_ahead(self, blocking):
         r1 = self.new_reader()
         r2 = self.new_reader()
-
         writer = self.writer()
+        self.start_proxies()
+
         writer.write(b'first write')
 
         r1.expect_read(b'first write', blocking=blocking)
@@ -239,8 +253,9 @@ class RingBufferTestBase:
 
     def test_write_conflict__beginning(self):
         reader = self.new_reader()
-
         writer = self.writer()
+        self.start_proxies()
+
         for i in range(self.ring.slot_count):
             writer.write(b'write %d' % i)
 
@@ -268,6 +283,8 @@ class RingBufferTestBase:
     def _do_read_after_close_beginning(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
+        self.start_proxies()
+
         writer.close()
         reader.expect_writer_finished(blocking=blocking)
 
@@ -280,6 +297,7 @@ class RingBufferTestBase:
     def _do_close_before_read(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
+        self.start_proxies()
 
         writer.write(b'fill the buffer')
         writer.close()
@@ -298,6 +316,7 @@ class RingBufferTestBase:
     def _do_close_after_read(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
+        self.start_proxies()
 
         writer.write(b'fill the buffer')
 
@@ -318,6 +337,8 @@ class RingBufferTestBase:
 
     def test_close_then_write(self):
         writer = self.writer()
+        self.start_proxies()
+
         writer.write(b'one')
         writer.close()
         writer.expect_already_closed()
@@ -326,6 +347,7 @@ class RingBufferTestBase:
         writer = self.writer()
         r1 = self.new_reader()
         r2 = self.new_reader()
+        self.start_proxies()
 
         r1.expect_read(b'write after read', blocking=True)
         r2.expect_read(b'write after read', blocking=True)
@@ -336,11 +358,36 @@ class RingBufferTestBase:
         writer = self.writer()
         r1 = self.new_reader()
         r2 = self.new_reader()
+        self.start_proxies()
 
         r1.expect_writer_finished(blocking=True)
         r2.expect_writer_finished(blocking=True)
 
         writer.close()
+
+    def test_force_reader_sync(self):
+        writer = self.writer()
+        r1 = self.new_reader()
+        r2 = self.new_reader()
+        self.start_proxies()
+
+        writer.write(b'one')
+        writer.write(b'two')
+        writer.write(b'three')
+
+        writer.expect_index(3)
+        r1.expect_index(0)
+        r2.expect_index(0)
+
+        writer.force_reader_sync()
+        r1.expect_index(3)
+        r2.expect_index(3)
+
+    def test_force_reader_sync_when_blocking(self):
+        pass
+
+    def test_force_reader_sync_when_blocking(self):
+        pass
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):

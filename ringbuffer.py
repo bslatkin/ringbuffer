@@ -225,6 +225,10 @@ class RingBuffer:
             for reader in self.readers:
                 reader.set(writer_position.counter)
 
+            for reader in self.readers:
+                p = reader.get()
+                print('Reader %r: counter: %d' % (reader, p.counter))
+
             self.condition.notify_all()
 
     def close(self):
