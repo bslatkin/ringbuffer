@@ -10,7 +10,7 @@ haven't caught up far enough in the ring buffer to make space.
 For more background see:
 https://docs.python.org/3/library/multiprocessing.html
 
-Or read the source:
+And read the source:
 https://github.com/python/cpython/tree/3.5/Lib/multiprocessing
 """
 
