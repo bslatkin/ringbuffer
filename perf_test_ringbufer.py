@@ -17,6 +17,7 @@ import argparse
 import collections
 import cProfile
 import functools
+import hashlib
 import logging
 import multiprocessing
 import os
@@ -38,7 +39,11 @@ FLAGS.add_argument('--slots', action='store', type=int, required=True)
 
 FLAGS.add_argument('--slot-bytes', action='store', type=int, required=True)
 
-FLAGS.add_argument('--readers', action='store', type=int, required=True)
+FLAGS.add_argument('--readers', action='store',
+                   type=int, required=True)
+
+FLAGS.add_argument('--reader-burn-cpu-milliseconds',
+                   action='store', type=int, default=0)
 
 FLAGS.add_argument('--writes-per-second', action='store',
                    type=int, required=True)
@@ -91,7 +96,7 @@ def sleep_generator(duration_seconds, writes_per_second):
 _CACHED_RANDOM_DATA = memoryview(10 * os.urandom(10 * 10**6))
 
 
-def random_data(num_bytes):
+def get_random_data(num_bytes):
     """Generate random input data from cached randomness.
 
     We do this because os.urandom can be very slow and that's not what this
@@ -99,6 +104,31 @@ def random_data(num_bytes):
     """
     index = random.randint(0, len(_CACHED_RANDOM_DATA) - num_bytes)
     return _CACHED_RANDOM_DATA[index:index + num_bytes]
+
+
+def generate_verifiable_data(num_bytes):
+    h = hashlib.sha256()
+    random_size = num_bytes - h.digest_size
+    random_data = get_random_data(random_size)
+    h.update(random_data)
+    digest = h.digest()
+
+    result = bytearray(random_size)
+    result[:random_size] = random_data
+    result[random_size:] = digest
+
+    return result
+
+
+def verify_data(data):
+    h = hashlib.sha256()
+    random_size = len(data) - h.digest_size
+    random_data = data[:random_size]
+    expected_digest = data[random_size:]
+    h.update(random_data)
+    digest = h.digest()
+    assert expected_digest == digest, 'Expected %r, found %r' % (
+        expected_digest, digest)
 
 
 class Timing:
@@ -119,13 +149,13 @@ class Timing:
         return False
 
 
-def print_writer_stats(flags, writes, elapsed):
-    print('Wrote %d slots in %f seconds' % (writes, elapsed.duration))
-    writes_per_second = writes / elapsed.duration
-    delta = writes_per_second - flags.writes_per_second
+def print_process_stats(process, flags, slots, elapsed):
+    print('%s: %d slots in %f seconds' % (process, slots, elapsed.duration))
+    slots_per_second = slots / elapsed.duration
+    delta = slots_per_second - flags.writes_per_second
     percent_wrong = 100 * delta / flags.writes_per_second
-    print('%f writes/second, %.1f%% relative to target' %
-          (writes_per_second, percent_wrong))
+    print('%f slots/second, %.1f%% relative to target' %
+          (slots_per_second, percent_wrong))
 
 
 def writer(flags, out_ring):
@@ -134,7 +164,7 @@ def writer(flags, out_ring):
     with Timing() as elapsed:
         it = sleep_generator(flags.duration_seconds, flags.writes_per_second)
         for i, _ in enumerate(it):
-            data = random_data(flags.slot_bytes)
+            data = generate_verifiable_data(flags.slot_bytes)
             try:
                 out_ring.try_write(data)
             except ringbuffer.WaitingForReaderError:
@@ -145,8 +175,21 @@ def writer(flags, out_ring):
 
         out_ring.close()
 
-    print_writer_stats(flags, i, elapsed)
     logging.debug('Exiting writer')
+    print_process_stats('Writer', flags, i, elapsed)
+
+
+def burn_cpu(milliseconds):
+    if not milliseconds:
+        return
+    start = now = time.time()
+    end = start + milliseconds / 1000
+    while True:
+        now = time.time()
+        if now >= end:
+            break
+        for i in range(100):
+            random.random() ** 1 / 2
 
 
 def reader(flags, in_ring, reader):
@@ -154,17 +197,23 @@ def reader(flags, in_ring, reader):
     read_duration = 1 / flags.writes_per_second
     reads = 0
 
-    while True:
-        try:
-            in_ring.blocking_read(reader)
-        except ringbuffer.WriterFinishedError:
-            break
+    with Timing() as elapsed:
+        while True:
+            try:
+                data = in_ring.blocking_read(reader)
+            except ringbuffer.WriterFinishedError:
+                break
 
-        reads += 1
-        if reads % print_every == 0:
-            logging.info('%r read %d slots so far', reader, reads)
+            verify_data(data)
+
+            burn_cpu(flags.reader_burn_cpu_milliseconds)
+
+            reads += 1
+            if reads % print_every == 0:
+                logging.info('%r read %d slots so far', reader, reads)
 
     logging.debug('Exiting reader %r', reader)
+    print_process_stats('Reader', flags, reads, elapsed)
 
 
 def get_buffer(flags):
