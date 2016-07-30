@@ -52,11 +52,20 @@ class Expecter:
     def write(self, data):
         self.ring.try_write(data)
 
-    def expect_read(self, expected_data):
-        data = self.ring.try_read(self.pointer)
+    def _get_read_func(self, blocking):
+        if blocking:
+            return self.ring.blocking_read
+        else:
+            return self.ring.try_read
+
+    def expect_read(self, expected_data, blocking=False):
+        read = self._get_read_func(blocking)
+        data = read(self.pointer)
         self.testcase.assertEqual(expected_data, data)
 
     def expect_waiting_for_writer(self):
+        # There's no blocking version of this because the WaitingForWriterError
+        # is what's used to determine when to block on the condition variable.
         self.testcase.assertRaises(
             ringbuffer.WaitingForWriterError,
             self.ring.try_read,
@@ -71,10 +80,11 @@ class Expecter:
     def close(self):
         self.ring.close()
 
-    def expect_writer_finished(self):
+    def expect_writer_finished(self, blocking=False):
+        read = self._get_read_func(blocking)
         self.testcase.assertRaises(
             ringbuffer.WriterFinishedError,
-            self.ring.try_read,
+            read,
             self.pointer)
 
     def expect_already_closed(self):
@@ -165,7 +175,7 @@ class RingBufferTestBase:
         self.run_proxy(proxy)
         return proxy
 
-    def test_one_reader__single_write(self):
+    def _do_read_single_write(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
 
@@ -174,29 +184,47 @@ class RingBufferTestBase:
         writer.expect_index(1)
 
         reader.expect_index(0)
-        reader.expect_read(b'first write')
+        reader.expect_read(b'first write', blocking=blocking)
         reader.expect_index(1)
 
-    def test_one_reader__ahead_of_writes(self):
+    def test_read_single_write_blocking(self):
+        self._do_read_single_write(True)
+
+    def test_read_single_write_non_blocking(self):
+        self._do_read_single_write(False)
+
+    def _do_read_ahead_of_writes(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
 
         reader.expect_waiting_for_writer()
         writer.write(b'first write')
-        reader.expect_read(b'first write')
+        reader.expect_read(b'first write', blocking=blocking)
 
-    def test_two_readers__one_behind_one_ahead(self):
+    def test_read_ahead_of_writes_blocking(self):
+        self._do_read_ahead_of_writes(True)
+
+    def test_read_ahead_of_writes_non_blocking(self):
+        self._do_read_ahead_of_writes(False)
+
+    def _do_two_reads_one_behind_one_ahead(self, blocking):
         r1 = self.new_reader()
         r2 = self.new_reader()
 
         writer = self.writer()
         writer.write(b'first write')
 
-        r1.expect_read(b'first write')
+        r1.expect_read(b'first write', blocking=blocking)
         r1.expect_waiting_for_writer()
 
-        r2.expect_read(b'first write')
+        r2.expect_read(b'first write', blocking=blocking)
         r2.expect_waiting_for_writer()
+
+    def test_two_reads_one_behind_one_ahead_blocking(self):
+        self._do_two_reads_one_behind_one_ahead(True)
+
+    def test_two_reads_one_behind_one_ahead_non_blocking(self):
+        self._do_two_reads_one_behind_one_ahead(False)
 
     def test_write_conflict__beginning(self):
         reader = self.new_reader()
@@ -226,13 +254,19 @@ class RingBufferTestBase:
     # def test_create_reader_after_writing(self):
     #    pass
 
-    def test_close_beginning(self):
+    def _do_read_after_close_beginning(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
         writer.close()
-        reader.expect_writer_finished()
+        reader.expect_writer_finished(blocking=blocking)
 
-    def test_close_before_read(self):
+    def test_read_after_close_beginning_blocking(self):
+        self._do_read_after_close_beginning(True)
+
+    def test_read_after_close_beginning_non_blocking(self):
+        self._do_read_after_close_beginning(False)
+
+    def _do_close_before_read(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
 
@@ -241,10 +275,16 @@ class RingBufferTestBase:
         writer.expect_index(1)
 
         reader.expect_read(b'fill the buffer')
-        reader.expect_writer_finished()
+        reader.expect_writer_finished(blocking=blocking)
         reader.expect_index(1)
 
-    def test_close_after_read(self):
+    def test_close_before_read_blocking(self):
+        self._do_close_before_read(True)
+
+    def test_close_before_read_non_blocking(self):
+        self._do_close_before_read(False)
+
+    def _do_close_after_read(self, blocking):
         reader = self.new_reader()
         writer = self.writer()
 
@@ -257,13 +297,22 @@ class RingBufferTestBase:
         writer.close()
         writer.expect_index(1)
 
-        reader.expect_writer_finished()
+        reader.expect_writer_finished(blocking=blocking)
+
+    def test_close_after_read_blocking(self):
+        self._do_close_after_read(True)
+
+    def test_close_after_read_non_blocking(self):
+        self._do_close_after_read(False)
 
     def test_close_then_write(self):
         writer = self.writer()
         writer.write(b'one')
         writer.close()
         writer.expect_already_closed()
+
+    def test_blocking_readers_wake_up_after_write(self):
+        self.fail()
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):

@@ -84,12 +84,14 @@ class RingBuffer:
         self.active = multiprocessing.RawValue(ctypes.c_bool, True)
         self.readers = []
         self.lock = multiprocessing.Lock()
+        self.condition = multiprocessing.Condition(self.lock)
 
     def new_reader(self):
-        writer_position = self.writer.get()
-        reader = Pointer(self.slot_count, start=writer_position.counter)
-        self.readers.append(reader)
-        return reader
+        with self.lock:
+            writer_position = self.writer.get()
+            reader = Pointer(self.slot_count, start=writer_position.counter)
+            self.readers.append(reader)
+            return reader
 
     def _has_write_conflict(self, position):
         index = position.index
@@ -107,7 +109,7 @@ class RingBuffer:
         return False
 
     def try_write(self, data):
-        with self.lock:
+        with self.condition:
             if not self.active.value:
                 raise AlreadyClosedError
 
@@ -118,23 +120,35 @@ class RingBuffer:
             self.array[position.index] = data
             self.writer.increment()
 
+            self.condition.notify_all()
+
     def _has_read_conflict(self, reader_position):
         writer_position = self.writer.get()
         return writer_position.counter <= reader_position.counter
 
-    def try_read(self, reader):
-        # TODO: Add a condition here to avoid polling
-        with self.lock:
-            position = reader.get()
-            if self._has_read_conflict(position):
-                if not self.active.value:
-                    raise WriterFinishedError
-                else:
-                    raise WaitingForWriterError
+    def _try_read_no_lock(self, reader):
+        position = reader.get()
+        if self._has_read_conflict(position):
+            if not self.active.value:
+                raise WriterFinishedError
+            else:
+                raise WaitingForWriterError
 
-            data = self.array[position.index]
-            reader.increment()
-            return data
+        data = self.array[position.index]
+        reader.increment()
+        return data
+
+    def try_read(self, reader):
+        with self.lock:
+            return self._try_read_no_lock(reader)
+
+    def blocking_read(self, reader):
+        with self.condition:
+            while True:
+                try:
+                    return self._try_read_no_lock(reader)
+                except WaitingForWriterError:
+                    self.condition.wait()
 
     def force_reader_sync(self):
         # TODO: Force all readers to have the same position as the writer
@@ -142,8 +156,9 @@ class RingBuffer:
         pass
 
     def close(self):
-        with self.lock:
+        with self.condition:
             self.active.value = False
+            self.condition.notify_all()
 
 
 class SlotArray:

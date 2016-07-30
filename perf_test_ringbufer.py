@@ -1,5 +1,18 @@
 #!/usr/bin/env python3
 
+"""Performance test of the RingBuffer class.
+
+Example invocation:
+
+./perf_test_ringbufer.py \
+    --debug \
+    --slot-bytes=1000000 \
+    --slots=100 \
+    --duration-seconds=10 \
+    --writes-per-second=30 \
+    --readers=5
+"""
+
 import argparse
 import collections
 import logging
@@ -54,6 +67,11 @@ RANDOM_DATA = os.urandom(10 * 10**6)
 
 
 def random_data(num_bytes):
+    """Generate random input data from cached randomness.
+
+    We do this because os.urandom can be very slow and that's not what this
+    code is trying to load test.
+    """
     assert num_bytes < len(RANDOM_DATA)
     index = random.randint(0, len(RANDOM_DATA) - num_bytes)
     return RANDOM_DATA[index:index + num_bytes]
@@ -96,7 +114,7 @@ def writer(flags, out_ring):
             try:
                 out_ring.try_write(data)
             except ringbuffer.WaitingForReaderError:
-                logging.error('Write %d pending readers', i)
+                logging.error('Write %d is waiting for readers', i)
             else:
                 if i and i % print_every == 0:
                     logging.info('Wrote %d slots so far', i)
