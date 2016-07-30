@@ -128,10 +128,21 @@ class AsyncProxy:
         func = getattr(self.expecter, name)
 
         def proxy(*args, **kwargs):
+            # This queue is used to sequence operations between functions
+            # that are running asynchronously (threads or processes).
             self.in_queue.put((name, args, kwargs))
-            # Wait for this thread to finish executing the requested behavior
-            # before allowing another thread's behavior to run.
-            self.in_queue.join()
+
+            # If this test function is running in blocking mode, that means
+            # the locking and sequencing is built into the semantics of the
+            # function call itself. That means we can skip waiting for the
+            # asynchronous function to consume the queue before letting
+            # subsequent test methods run.
+            if kwargs.get('blocking'):
+                # Allow a context switch so the asynchronous function has
+                # a chance to actually start the function call.
+                time.sleep(0.1)
+            else:
+                self.in_queue.join()
 
         return proxy
 
@@ -312,7 +323,24 @@ class RingBufferTestBase:
         writer.expect_already_closed()
 
     def test_blocking_readers_wake_up_after_write(self):
-        self.fail()
+        writer = self.writer()
+        r1 = self.new_reader()
+        r2 = self.new_reader()
+
+        r1.expect_read(b'write after read', blocking=True)
+        r2.expect_read(b'write after read', blocking=True)
+
+        writer.write(b'write after read')
+
+    def test_blocking_readers_wake_up_after_close(self):
+        writer = self.writer()
+        r1 = self.new_reader()
+        r2 = self.new_reader()
+
+        r1.expect_writer_finished(blocking=True)
+        r2.expect_writer_finished(blocking=True)
+
+        writer.close()
 
 
 class LocalTest(RingBufferTestBase, unittest.TestCase):
