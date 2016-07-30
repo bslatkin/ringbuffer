@@ -151,11 +151,7 @@ def reader(flags, in_ring, reader):
 
     while True:
         try:
-            in_ring.try_read(reader)
-        except ringbuffer.WaitingForWriterError:
-            # TODO: Replace this polling with a condition variable
-            time.sleep(read_duration / 2)
-            continue
+            in_ring.blocking_read(reader)
         except ringbuffer.WriterFinishedError:
             break
 
