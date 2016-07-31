@@ -3,15 +3,9 @@
 Allows multiple child Python processes started via the multiprocessing module
 to read from a shared ring buffer in the parent process. For each child, a
 pointer is maintained for the purpose of reading. One pointer is maintained by
-the parent for the purpose of writing. Readers will have to wait if the writer
-hasn't written anything new. The writer will have to wait if the readers
-haven't caught up far enough in the ring buffer to make space.
-
-For more background see:
-https://docs.python.org/3/library/multiprocessing.html
-
-And read the source:
-https://github.com/python/cpython/tree/3.5/Lib/multiprocessing
+for the purpose of writing. Reads may be issued in blocking or non-blocking
+mode. Writes are always in non-blocking mode and will raise an exception
+if the buffer is full.
 """
 
 import ctypes
