@@ -55,7 +55,7 @@ Example that shows how the writer will fall behind its target rate when the requ
     --duration-seconds=10 \
     --writes-per-second=24 \
     --readers=1 \
-    --no-verify_writes=false
+    --no-verify_writes
 ```
 
 Example that shows what happens when the readers can't keep up with the writer:
