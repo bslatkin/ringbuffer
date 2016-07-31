@@ -48,13 +48,14 @@ Example that shows how the writer will fall behind its target rate when the lock
 Example that shows how the writer will fall behind its target rate when the requested data transfer rate is too high for the memory performance of the machine:
 
 ```
-./perf_test_ringbuffer.py
+./perf_test_ringbuffer.py \
     --debug \
-    --slot-bytes=75000000 \
+    --slot-bytes=100000000 \
     --slots=3 \
     --duration-seconds=10 \
     --writes-per-second=24 \
-    --readers=1
+    --readers=1 \
+    --no-verify_writes=false
 ```
 
 Example that shows what happens when the readers can't keep up with the writer:

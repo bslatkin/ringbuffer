@@ -38,6 +38,12 @@ FLAGS.add_argument('--reader-burn-cpu-milliseconds',
 FLAGS.add_argument('--writes-per-second', action='store',
                    type=int, required=True)
 
+FLAGS.add_argument('--verify_writes', action='store_true',
+                   dest='verify_writes')
+FLAGS.add_argument('--no-verify_writes',
+                   action='store_false', dest='verify_writes')
+FLAGS.set_defaults(verify_writes=True)
+
 
 def profile(func):
     @functools.wraps(func)
@@ -160,7 +166,11 @@ def writer(flags, out_ring):
     with Timing() as elapsed:
         it = sleep_generator(flags.duration_seconds, flags.writes_per_second)
         for i, _ in enumerate(it):
-            data = generate_verifiable_data(flags.slot_bytes)
+            if flags.verify_writes:
+                data = generate_verifiable_data(flags.slot_bytes)
+            else:
+                data = get_random_data(flags.slot_bytes)
+
             try:
                 out_ring.try_write(data)
             except ringbuffer.WaitingForReaderError:
@@ -201,7 +211,8 @@ def reader(flags, in_ring, reader):
             except ringbuffer.WriterFinishedError:
                 break
 
-            verify_data(data)
+            if flags.verify_writes:
+                verify_data(data)
 
             burn_cpu(flags.reader_burn_cpu_milliseconds)
 
