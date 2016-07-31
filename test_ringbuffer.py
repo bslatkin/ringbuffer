@@ -240,6 +240,9 @@ class RingBufferTestBase:
         writer.write_memory_view(data)
         reader.expect_read(data)
 
+    def test_write_ctype_array(self):
+        self.fail()
+
     def _do_read_single_write(self, blocking):
         reader = self.new_reader()
         writer = self.new_writer()
