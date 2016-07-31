@@ -83,7 +83,7 @@ def sleep_generator(duration_seconds, writes_per_second):
 
 
 # Using a memoryview prevents copying when random_data slices this value.
-_CACHED_RANDOM_DATA = memoryview(10 * os.urandom(10 * 10**6))
+_CACHED_RANDOM_DATA = memoryview(100 * os.urandom(10 * 10**6))
 
 
 def get_random_data(num_bytes):
@@ -142,11 +142,15 @@ class Timing:
 
 def print_process_stats(process, flags, slots, elapsed):
     print('%s: %d slots in %f seconds' % (process, slots, elapsed.duration))
+
     slots_per_second = slots / elapsed.duration
+    mb_per_second = flags.slot_bytes * slots_per_second / 1e6
+    print('%s: %.f MBytes per second' % (process, mb_per_second))
+
     delta = slots_per_second - flags.writes_per_second
     percent_wrong = 100 * delta / flags.writes_per_second
-    print('%f slots/second, %.1f%% relative to target' %
-          (slots_per_second, percent_wrong))
+    print('%s: %f slots/second, %.1f%% relative to target' %
+          (process, slots_per_second, percent_wrong))
 
 
 #@profile
