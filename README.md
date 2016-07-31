@@ -8,7 +8,7 @@ For an example of how it all fits together, look at [example_numpy.py](example_n
 
 [![Build Status](https://travis-ci.org/bslatkin/ringbuffer.svg?branch=master)](https://travis-ci.org/bslatkin/ringbuffer)
 
-Works with Python 3.4 and later. Background on why it doesn't work with Python 3.3 [is here](http://bugs.python.org/issue15944).
+Works with Python 3.5 and later. Background on why it doesn't work with Python 3.3 and 3.4 [is here](http://bugs.python.org/issue15944).
 
 ---
 
