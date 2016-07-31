@@ -88,8 +88,8 @@ class Expecter:
             self.ring.try_write,
             b'should not work')
 
-    def close(self):
-        self.ring.close()
+    def writer_done(self):
+        self.ring.writer_done()
 
     def expect_writer_finished(self, blocking=False):
         read = self._get_read_func(blocking)
@@ -207,6 +207,7 @@ class RingBufferTestBase:
         return proxy
 
     def new_writer(self):
+        self.ring.new_writer()
         expecter = Expecter(self.ring, self.ring.writer, self)
         proxy = AsyncProxy(expecter, self.new_queue(), self.error_queue)
         self.proxies.append(proxy)
@@ -411,7 +412,7 @@ class RingBufferTestBase:
         writer = self.new_writer()
         self.start_proxies()
 
-        writer.close()
+        writer.writer_done()
         reader.expect_writer_finished(blocking=blocking)
 
     def test_read_after_close_beginning_blocking(self):
@@ -426,7 +427,7 @@ class RingBufferTestBase:
         self.start_proxies()
 
         writer.write(b'fill the buffer')
-        writer.close()
+        writer.writer_done()
         writer.expect_index(1)
 
         reader.expect_read(b'fill the buffer')
@@ -450,7 +451,7 @@ class RingBufferTestBase:
         reader.expect_waiting_for_writer()
         reader.expect_index(1)
 
-        writer.close()
+        writer.writer_done()
         writer.expect_index(1)
 
         reader.expect_writer_finished(blocking=blocking)
@@ -466,7 +467,7 @@ class RingBufferTestBase:
         self.start_proxies()
 
         writer.write(b'one')
-        writer.close()
+        writer.writer_done()
         writer.expect_already_closed()
 
     def test_blocking_readers_wake_up_after_write(self):
@@ -489,7 +490,7 @@ class RingBufferTestBase:
         r1.expect_writer_finished(blocking=True)
         r2.expect_writer_finished(blocking=True)
 
-        writer.close()
+        writer.writer_done()
 
     def test_force_reader_sync(self):
         writer = self.new_writer()
@@ -541,6 +542,39 @@ class RingBufferTestBase:
 
     def test_multiple_writers_non_blocking(self):
         self._do_multiple_writers(False)
+
+    def _do_test_multiple_writers_close(self, blocking):
+        w1 = self.new_writer()
+        w2 = self.new_writer()
+        reader = self.new_reader()
+        self.start_proxies()
+
+        w1.write(b'aaa')
+        w1.writer_done()
+
+        w2.write(b'bbb')
+        w2.writer_done()
+
+        reader.expect_read(b'aaa', blocking=blocking)
+        reader.expect_read(b'bbb', blocking=blocking)
+        reader.expect_writer_finished(blocking=blocking)
+
+    def test_multiple_writers_close_blocking(self):
+        self._do_test_multiple_writers_close(True)
+
+    def test_multiple_writers_close_non_blocking(self):
+        self._do_test_multiple_writers_close(False)
+
+    def _do_start_read_before_writer_setup(self, blocking):
+        reader = self.new_reader()
+        self.start_proxies()
+        reader.expect_writer_finished(blocking=blocking)
+
+    def test_start_read_before_writer_setup_blocking(self):
+        self._do_start_read_before_writer_setup(True)
+
+    def test_start_read_before_writer_setup_non_blocking(self):
+        self._do_start_read_before_writer_setup(False)
 
 
 class ThreadingTest(RingBufferTestBase, unittest.TestCase):

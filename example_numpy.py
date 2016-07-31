@@ -22,7 +22,7 @@ def writer(ring):
         if i and i % 100 == 0:
             print('Wrote %d so far' % i)
 
-    ring.close()
+    ring.writer_done()
     print('Writer is done')
 
 
@@ -43,6 +43,7 @@ def reader(ring, pointer):
 
 def main():
     ring = ringbuffer.RingBuffer(slot_bytes=50000, slot_count=100)
+    ring.new_writer()
 
     processes = [
         multiprocessing.Process(target=writer, args=(ring,)),
@@ -53,8 +54,11 @@ def main():
 
     for p in processes:
         p.start()
+
     for p in processes:
-        p.join()
+        p.join(timeout=20)
+        assert not p.is_alive()
+        assert p.exitcode == 0
 
 
 if __name__ == '__main__':

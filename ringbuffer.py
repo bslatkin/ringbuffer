@@ -97,7 +97,7 @@ class RingBuffer:
         self.slot_count = slot_count
         self.array = SlotArray(slot_bytes=slot_bytes, slot_count=slot_count)
         self.writer = Pointer(self.slot_count)
-        self.active = multiprocessing.RawValue(ctypes.c_bool, True)
+        self.active = multiprocessing.RawValue(ctypes.c_uint, 0)
         self.readers = []
         self.lock = multiprocessing.Lock()
         self.condition = multiprocessing.Condition(self.lock)
@@ -118,6 +118,11 @@ class RingBuffer:
             reader = Pointer(self.slot_count, start=writer_position.counter)
             self.readers.append(reader)
             return reader
+
+    def new_writer(self):
+        """TODO"""
+        with self.lock:
+            self.active.value += 1
 
     def _has_write_conflict(self, position):
         index = position.index
@@ -234,15 +239,16 @@ class RingBuffer:
 
             self.condition.notify_all()
 
-    def close(self):
+    def writer_done(self):
         """Called by the writer when no more data is expected to be written.
 
-        Will cause a WriterFinishedError exception to be raised by any
-        blocking read calls or subsequent calls to read.
+        Should be called once for every corresponding call to new_writer().
+        Once all writers have called writer_done(), a WriterFinishedError
+        exception will be raised by any blocking read calls or subsequent
+        calls to read.
         """
-        # TODO: Allow this to be closed multiple times.
         with self.condition:
-            self.active.value = False
+            self.active.value -= 1
             self.condition.notify_all()
 
 

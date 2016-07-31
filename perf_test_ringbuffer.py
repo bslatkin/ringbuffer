@@ -195,7 +195,7 @@ def writer(flags, out_ring):
             if writes and writes % print_every == 0:
                 logging.debug('Wrote %d slots so far', writes)
 
-        out_ring.close()
+        out_ring.writer_done()
 
     logging.debug('Exiting writer')
     print_process_stats('Writer', flags, writes, elapsed)
@@ -253,6 +253,7 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     ring = get_buffer(flags)
+    ring.new_writer()
 
     processes = [
         multiprocessing.Process(
@@ -271,6 +272,7 @@ def main():
 
     for process in processes:
         process.join()
+        assert process.exitcode == 0
 
 
 if __name__ == '__main__':
