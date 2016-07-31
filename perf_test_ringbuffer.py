@@ -193,7 +193,7 @@ def writer(flags, out_ring):
 
             writes += 1
             if writes and writes % print_every == 0:
-                logging.info('Wrote %d slots so far', writes)
+                logging.debug('Wrote %d slots so far', writes)
 
         out_ring.close()
 
