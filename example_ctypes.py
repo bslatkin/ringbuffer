@@ -73,10 +73,12 @@ def main():
     ]
 
     for p in processes:
+        p.daemon = True
         p.start()
 
     for p in processes:
-        p.join()
+        p.join(timeout=5)
+        assert not p.is_alive(), 'Child probably hit an exception'
 
 
 if __name__ == '__main__':

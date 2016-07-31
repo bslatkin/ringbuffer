@@ -4,6 +4,8 @@
 
 ./example_numpy.py || exit 1
 
+./example_ctypes.py || exit 1
+
 ./perf_test_ringbuffer.py \
     --debug \
     --slot-bytes=1000000 \
