@@ -146,17 +146,30 @@ class Timing:
         return False
 
 
-def print_process_stats(process, flags, slots, elapsed):
-    print('%s: %d slots in %f seconds' % (process, slots, elapsed.duration))
+_PRINT_LOCK = multiprocessing.Lock()
 
+
+def print_process_stats(process, flags, slots, elapsed):
     slots_per_second = slots / elapsed.duration
     mb_per_second = flags.slot_bytes * slots_per_second / 1e6
-    print('%s: %.f MBytes per second' % (process, mb_per_second))
-
     delta = slots_per_second - flags.writes_per_second
     percent_wrong = 100 * delta / flags.writes_per_second
-    print('%s: %f slots/second, %.1f%% relative to target' %
-          (process, slots_per_second, percent_wrong))
+
+    message = """%(action)s
+%(slots)d slots in %(duration)f seconds
+%(bandwidth)f MBytes per second
+%(rate)f slots/second, %(delta).1f%% relative to target
+""" % {
+        'action': process,
+        'slots': slots,
+        'duration': elapsed.duration,
+        'rate': slots_per_second,
+        'bandwidth': mb_per_second,
+        'delta': percent_wrong,
+    }
+
+    with _PRINT_LOCK:
+        print(message)
 
 
 #@profile
@@ -223,7 +236,7 @@ def reader(flags, in_ring, reader):
                 logging.info('%r read %d slots so far', reader, reads)
 
     logging.debug('Exiting reader %r', reader)
-    print_process_stats('Reader', flags, reads, elapsed)
+    print_process_stats('Reader %d' % id(reader), flags, reads, elapsed)
 
 
 def get_buffer(flags):
