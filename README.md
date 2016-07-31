@@ -4,6 +4,8 @@ The [`RingBuffer`](ringbuffer.py) data structure's performance is primarily boun
 
 For an example of how it all fits together, look at [example_numpy.py](example_numpy.py) or [example_ctypes.py](example_ctypes.py).
 
+[![Build Status](https://travis-ci.org/bslatkin/ringbuffer.svg?branch=master)](https://travis-ci.org/bslatkin/ringbuffer)
+
 ---
 
 Included is a tool called [perf_test_ringbuffer.py](perf_test_ringbuffer) that tests the performance characteristics of the ring buffer. This can be used to exercise the various ways in which the `RingBuffer` scales, including number of readers, number of writes per second, slow readers, etc.
