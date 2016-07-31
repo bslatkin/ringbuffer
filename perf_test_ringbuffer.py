@@ -165,7 +165,8 @@ def writer(flags, out_ring):
 
     with Timing() as elapsed:
         it = sleep_generator(flags.duration_seconds, flags.writes_per_second)
-        for i, _ in enumerate(it):
+        writes = 0
+        for _ in it:
             if flags.verify_writes:
                 data = generate_verifiable_data(flags.slot_bytes)
             else:
@@ -174,15 +175,17 @@ def writer(flags, out_ring):
             try:
                 out_ring.try_write(data)
             except ringbuffer.WaitingForReaderError:
-                logging.error('Write %d is waiting for readers', i)
-            else:
-                if i and i % print_every == 0:
-                    logging.info('Wrote %d slots so far', i)
+                logging.error('Write %d is waiting for readers', writes)
+                continue
+
+            writes += 1
+            if writes and writes % print_every == 0:
+                logging.info('Wrote %d slots so far', writes)
 
         out_ring.close()
 
     logging.debug('Exiting writer')
-    print_process_stats('Writer', flags, i, elapsed)
+    print_process_stats('Writer', flags, writes, elapsed)
 
 
 def burn_cpu(milliseconds):
