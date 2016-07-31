@@ -6,13 +6,14 @@ import argparse
 import collections
 import cProfile
 import functools
-import hashlib
 import logging
 import multiprocessing
 import os
 import pstats
 import random
+import struct
 import time
+import zlib
 
 import ringbuffer
 
@@ -95,29 +96,30 @@ def get_random_data(num_bytes):
     return _CACHED_RANDOM_DATA[index:index + num_bytes]
 
 
-def generate_verifiable_data(num_bytes):
-    h = hashlib.sha256()
-    random_size = num_bytes - h.digest_size
-    random_data = get_random_data(random_size)
-    h.update(random_data)
-    digest = h.digest()
+def get_crc32(data):
+    return zlib.crc32(data) & 0xffffffff
 
-    result = bytearray(random_size)
+
+def generate_verifiable_data(num_bytes):
+    random_size = num_bytes - 4
+    random_data = get_random_data(random_size)
+    crc = get_crc32(random_data)
+
+    result = bytearray(num_bytes)
     result[:random_size] = random_data
-    result[random_size:] = digest
+    struct.pack_into('>I', result, random_size, crc)
 
     return result
 
 
 def verify_data(data):
-    h = hashlib.sha256()
-    random_size = len(data) - h.digest_size
+    random_size = len(data) - 4
     random_data = data[:random_size]
-    expected_digest = data[random_size:]
-    h.update(random_data)
-    digest = h.digest()
-    assert expected_digest == digest, 'Expected %r, found %r' % (
-        expected_digest, digest)
+    found_crc = get_crc32(random_data)
+    (expected_crc,) = struct.unpack_from('>I', data, random_size)
+
+    assert expected_crc == found_crc, 'Expected crc %r, found crc %r' % (
+        expected_crc, found_crc)
 
 
 class Timing:
