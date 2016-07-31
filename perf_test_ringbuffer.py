@@ -186,8 +186,6 @@ def writer(flags, out_ring):
 
 
 def burn_cpu(milliseconds):
-    if not milliseconds:
-        return
     start = now = time.time()
     end = start + milliseconds / 1000
     while True:
@@ -214,7 +212,8 @@ def reader(flags, in_ring, reader):
             if flags.verify_writes:
                 verify_data(data)
 
-            burn_cpu(flags.reader_burn_cpu_milliseconds)
+            if flags.reader_burn_cpu_milliseconds:
+                burn_cpu(flags.reader_burn_cpu_milliseconds)
 
             reads += 1
             if reads % print_every == 0:
