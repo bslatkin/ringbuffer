@@ -543,7 +543,7 @@ class RingBufferTestBase:
         self._do_multiple_writers(False)
 
 
-class LocalTest(RingBufferTestBase, unittest.TestCase):
+class ThreadingTest(RingBufferTestBase, unittest.TestCase):
 
     def new_queue(self):
         return queue.Queue()
