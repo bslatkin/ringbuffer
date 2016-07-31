@@ -240,6 +240,7 @@ class RingBuffer:
         Will cause a WriterFinishedError exception to be raised by any
         blocking read calls or subsequent calls to read.
         """
+        # TODO: Allow this to be closed multiple times.
         with self.condition:
             self.active.value = False
             self.condition.notify_all()
