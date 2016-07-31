@@ -284,6 +284,7 @@ class SlotArray:
     def __setitem__(self, i, data):
         data_view = memoryview(data).cast('B')
         data_size = len(data_view)
+        # data_size = len(data)
         if data_size > self.slot_bytes:
             raise DataTooLargeError('%d bytes too big for slot' % data_size)
 
@@ -292,6 +293,7 @@ class SlotArray:
         struct.pack_into('>I', slot_view, 0, data_size)
         start = self.length_bytes
         slot_view[start:start + data_size] = data_view
+        # slot_view[start:start + data_size] = data
 
     def __len__(self):
         return self.slot_count

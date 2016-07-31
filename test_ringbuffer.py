@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import ctypes
 import gc
 import logging
 import multiprocessing
@@ -56,6 +57,12 @@ class Expecter:
         view = memoryview(data)
         self.ring.try_write(view)
 
+    def write_ctype(self, data):
+        data_type = ctypes.c_double * len(data)
+        cdata = data_type()
+        cdata[:] = data
+        self.ring.try_write(cdata)
+
     def _get_read_func(self, blocking):
         if blocking:
             return self.ring.blocking_read
@@ -65,7 +72,7 @@ class Expecter:
     def expect_read(self, expected_data, blocking=False):
         read = self._get_read_func(blocking)
         data = read(self.pointer)
-        self.testcase.assertEqual(expected_data, data)
+        self.testcase.assertEqual(expected_data, data, 'Data was: %r' % data)
 
     def expect_waiting_for_writer(self):
         # There's no blocking version of this because the WaitingForWriterError
@@ -165,7 +172,7 @@ class AsyncProxy:
 class RingBufferTestBase:
 
     def setUp(self):
-        self.ring = ringbuffer.RingBuffer(slot_bytes=20, slot_count=10)
+        self.ring = ringbuffer.RingBuffer(slot_bytes=100, slot_count=10)
         self.proxies = []
         self.error_queue = self.new_queue()
 
@@ -241,7 +248,34 @@ class RingBufferTestBase:
         reader.expect_read(data)
 
     def test_write_ctype_array(self):
-        self.fail()
+        reader = self.new_reader()
+        writer = self.new_writer()
+        self.start_proxies()
+
+        data = [
+            0.10547615602385774,
+            0.7852261064650733,
+            0.9641224591137485,
+            0.7119325400788387,
+            0.0351822948099656,
+            0.7533559074003938,
+            0.40285734175834087,
+            0.9567564883196842,
+            0.38539673218346415,
+            0.2682555751644704,
+        ]
+        writer.write_ctype(data)
+
+        expected_bytes = (
+            b'\xe0X\xa1@|\x00\xbb?\xf3s\xe7\x7f\x92 \xe9?\xd8q\xe7W\x17\xda'
+            b'\xee?)\x19\x13\xc0&\xc8\xe6?\x00\xcd6\xebi\x03\xa2?\x1f\x0f'
+            b'\x11\xd9}\x1b\xe8?r\x8e\xf3(j\xc8\xd9?\x044r\xc8\xbf\x9d\xee?'
+            b'\xe0\xa5-\x0eW\xaa\xd8?\xbcD\x93n\x19+\xd1?')
+        reader.expect_read(expected_bytes)
+
+        data_type = ctypes.c_double * len(data)
+        expected = data_type.from_buffer_copy(expected_bytes)
+        self.assertEqual(list(expected), data)
 
     def _do_read_single_write(self, blocking):
         reader = self.new_reader()
