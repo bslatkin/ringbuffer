@@ -1,4 +1,4 @@
-A multiple writer and reader [ring buffer](https://en.wikipedia.org/wiki/Circular_buffer) that allows for high-throughput data transfer between [multiproccessing](https://docs.python.org/3/library/multiprocessing.html) Python processes. The goal is to make it easy to construct bandwidth-heavy pipelines (e.g., video stream processing) that can utilize multiple cores with Python tools like [OpenCV](http://docs.opencv.org/3.0-last-rst/doc/py_tutorials/py_video/py_table_of_contents_video/py_table_of_contents_video.html#py-table-of-content-video), [Scikit Learn](http://scikit-learn.org/stable/auto_examples/classification/plot_digits_classification.html), and [TensorFlow](https://www.tensorflow.org/versions/r0.10/tutorials/image_recognition/index.html).
+A multiple writer and reader [ring buffer](https://en.wikipedia.org/wiki/Circular_buffer) that allows for high-throughput data transfer between [multiproccessing](https://docs.python.org/3/library/multiprocessing.html) Python processes. The goal is to make it easy to construct bandwidth-heavy pipelines (e.g., for video stream processing) that can utilize multiple cores with Python tools like [OpenCV](http://docs.opencv.org/3.0-last-rst/doc/py_tutorials/py_video/py_table_of_contents_video/py_table_of_contents_video.html#py-table-of-content-video), [Scikit Learn](http://scikit-learn.org/stable/auto_examples/classification/plot_digits_classification.html), and [TensorFlow](https://www.tensorflow.org/versions/r0.10/tutorials/image_recognition/index.html).
 
 The [`RingBuffer`](ringbuffer.py) data structure's performance is primarily bound by the behavior of the [Lock class](https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Lock), which is a Kernel semaphore under the covers. The lock is held during all reading and writing operations, meaning lock contention dominates as the number of readers (or writes per second) increases. Memory performance isn't an issue because all data is transferred through [mmap'ed buffers](https://en.wikipedia.org/wiki/Mmap#Memory_visibility).
 
@@ -7,6 +7,8 @@ On an old MacBook, the ring buffer can easily do 2 gigabytes per second of trans
 For an example of how it all fits together, look at [example_numpy.py](example_numpy.py) or [example_ctypes.py](example_ctypes.py).
 
 [![Build Status](https://travis-ci.org/bslatkin/ringbuffer.svg?branch=master)](https://travis-ci.org/bslatkin/ringbuffer)
+
+Works with Python 3.4 and later. Background on why it doesn't work with Python 3.3 [is here](http://bugs.python.org/issue15944).
 
 ---
 
