@@ -282,8 +282,7 @@ class SlotArray:
 
     def __getitem__(self, i):
         data = memoryview(self.array[i])
-        length_prefix = data[:self.length_bytes]
-        (length,) = struct.unpack('>I', length_prefix)
+        (length,) = struct.unpack_from('>I', data, 0)
 
         start = self.length_bytes
         # This must create a copy because we want the writer to be able to
