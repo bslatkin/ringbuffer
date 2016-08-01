@@ -120,7 +120,12 @@ class RingBuffer:
             return reader
 
     def new_writer(self):
-        """TODO"""
+        """Must be called once by each writer before any reads occur.
+
+        Should be paired with a single subsequent call to writer_done() to
+        indicate that this writer has finished and will not write any more
+        data into the ring.
+        """
         with self.lock:
             self.active.value += 1
 
