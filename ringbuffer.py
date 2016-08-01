@@ -81,10 +81,11 @@ class RingBuffer:
 
     All methods are thread safe. Multiple readers and writers are permitted.
     Before kicking off multiprocessing.Process instances, first allocate all
-    of the readers you'll need with new_reader() and pass the Pointer value
-    returned by that method to the multiprocessing.Process constructor along
-    with the RingBuffer constructor. Calling new_reader() from a child
-    multiprocessing.Process will not work.
+    of the writers you'll need with new_writer() and readers with new_reader().
+    Pass the Pointer value returned by the new_reader() method to the
+    multiprocessing.Process constructor along with the RingBuffer instance.
+    Calling  new_writer() or new_reader() from a child multiprocessing.Process
+    will not work.
     """
 
     def __init__(self, *, slot_bytes, slot_count):
@@ -277,8 +278,8 @@ class SlotArray:
         self.slot_bytes = slot_bytes
         self.slot_count = slot_count
         self.length_bytes = 4
-        self.slot_type = ctypes.c_byte * (slot_bytes + self.length_bytes)
-        self.array = multiprocessing.RawArray(self.slot_type, slot_count)
+        slot_type = ctypes.c_byte * (slot_bytes + self.length_bytes)
+        self.array = multiprocessing.RawArray(slot_type, slot_count)
 
     def __getitem__(self, i):
         data = memoryview(self.array[i])
