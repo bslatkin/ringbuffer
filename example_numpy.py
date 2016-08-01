@@ -14,7 +14,7 @@ def writer(ring):
         m = numpy.matlib.randn(25, 100)
         x = numpy.ctypeslib.as_ctypes(m)
         try:
-            ring.try_write(memoryview(x))
+            ring.try_write(x)
         except ringbuffer.WaitingForReaderError:
             print('Reader is too slow, dropping %r' % x)
             continue
