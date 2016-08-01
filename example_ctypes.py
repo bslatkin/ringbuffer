@@ -54,7 +54,7 @@ def reader(ring, pointer):
         except ringbuffer.WriterFinishedError:
             return
 
-        record = Record.from_buffer_copy(data)
+        record = Record.from_buffer(data)
         if record.write_number and record.write_number % 100 == 0:
             print('Reader %s saw record %d at timestamp %d with %d bytes' %
                   (id(pointer), record.write_number,

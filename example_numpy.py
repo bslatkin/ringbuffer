@@ -35,6 +35,7 @@ def reader(ring, pointer):
 
         x = numpy.frombuffer(data)
         x.shape = (25, 100)
+        x[1, 1] = 1.1  # Verify it's mutable
         m = numpy.matlib.asmatrix(x)
         norm = numpy.linalg.norm(m)
 

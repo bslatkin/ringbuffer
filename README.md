@@ -2,9 +2,9 @@ A multiple writer and reader [ring buffer](https://en.wikipedia.org/wiki/Circula
 
 The [`RingBuffer`](ringbuffer.py) data structure's performance is primarily bound by the behavior of the [Lock class](https://docs.python.org/3/library/multiprocessing.html#multiprocessing.Lock), which is a Kernel semaphore under the covers. The lock is held during all reading and writing operations, meaning lock contention dominates as the number of readers (or writes per second) increases. Memory performance isn't an issue because all data is transferred through [mmap'ed buffers](https://en.wikipedia.org/wiki/Mmap#Memory_visibility).
 
-On an old MacBook, the ring buffer can easily do 2 gigabytes per second of transfer when using large slot sizes (~100MB), a relatively low number of writes per second (~24), and a single reader/writer pair. As you increase the number of reads and writes the performance degrades proportionately.
+For examples of how it all fits together, look at [example_numpy.py](example_numpy.py) and [example_ctypes.py](example_ctypes.py).
 
-For an example of how it all fits together, look at [example_numpy.py](example_numpy.py) or [example_ctypes.py](example_ctypes.py).
+On an old MacBook, the ring buffer can easily do 2 gigabytes per second of transfer when using large slot sizes (~100MB), a relatively low number of writes per second (~24), and a single reader/writer pair. As you increase the number of reads and writes the performance degrades proportionately.
 
 [![Build Status](https://travis-ci.org/bslatkin/ringbuffer.svg?branch=master)](https://travis-ci.org/bslatkin/ringbuffer)
 

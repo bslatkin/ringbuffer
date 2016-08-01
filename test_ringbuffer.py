@@ -297,7 +297,7 @@ class RingBufferTestBase:
         self.start_proxies()
 
         writer.write(b'this works')
-        reader.expect_try_read_type(bytes)
+        reader.expect_try_read_type(bytearray)
 
     def test_read_single_write_blocking(self):
         self._do_read_single_write(True)

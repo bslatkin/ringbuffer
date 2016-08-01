@@ -193,7 +193,9 @@ class RingBuffer:
             reader: Position previously returned by the call to new_reader().
 
         Returns:
-            bytes of the data from the slot.
+            bytearray containing a copy of the data from the slot. This
+            value is mutable an can be used to back ctypes objects, NumPy
+            arrays, etc.
 
         Raises:
             WriterFinishedError: If the RingBuffer was closed before this
@@ -212,7 +214,9 @@ class RingBuffer:
             reader: Position previously returned by the call to new_reader().
 
         Returns:
-            bytes of the data from the slot.
+            bytearray containing a copy of the data from the slot. This
+            value is mutable an can be used to back ctypes objects, NumPy
+            arrays, etc.
 
         Raises:
             WriterFinishedError: If the RingBuffer was closed while waiting
@@ -279,22 +283,22 @@ class SlotArray:
         start = self.length_bytes
         # This must create a copy because we want the writer to be able to
         # overwrite this slot as soon as the data has been retrieved by all
-        # readers.
-        return data[start:start + length].tobytes()
+        # readers. But we also want the returned bytes to be mutable so that
+        # the returned data can immediately back a ctypes record using the
+        # from_buffer() method (instead of from_buffer_copy()).
+        return bytearray(data[start:start + length])
 
     def __setitem__(self, i, data):
-        data_view = memoryview(data).cast('B')
+        data_view = memoryview(data).cast('@B')
         data_size = len(data_view)
-        # data_size = len(data)
         if data_size > self.slot_bytes:
             raise DataTooLargeError('%d bytes too big for slot' % data_size)
 
-        # Avoid copying!
-        slot_view = memoryview(self.array[i]).cast('B')
+        # Avoid copying the input data! Do only a single copy into the slot.
+        slot_view = memoryview(self.array[i]).cast('@B')
         struct.pack_into('>I', slot_view, 0, data_size)
         start = self.length_bytes
         slot_view[start:start + data_size] = data_view
-        # slot_view[start:start + data_size] = data
 
     def __len__(self):
         return self.slot_count
