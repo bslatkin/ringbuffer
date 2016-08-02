@@ -324,7 +324,8 @@ class ReadersWriterLock:
 
     Notably, futexes use the smp_mb() memory fence, which is a general write
     barrier, meaning we can assume that all memory reads and writes before
-    a barrier will complete before reads and writes after the barrier.
+    a barrier will complete before reads and writes after the barrier, even
+    if the semaphore / futex isn't actively held.
     """
 
     def __init__(self):
