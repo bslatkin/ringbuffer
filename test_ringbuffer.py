@@ -63,6 +63,31 @@ class ReadersWriterLockTest(unittest.TestCase):
         self.assertEqual(0, self.lock.readers)
         self.assertFalse(self.lock.writer)
 
+    def test_concurrent_readers(self):
+        self.assertEqual(0, self.lock.readers)
+        self.assertFalse(self.lock.writer)
+
+        with self.lock.for_read():
+            self.assertEqual(1, self.lock.readers)
+            self.assertFalse(self.lock.writer)
+
+            with self.lock.for_read():
+                self.assertEqual(2, self.lock.readers)
+                self.assertFalse(self.lock.writer)
+
+                with self.lock.for_read():
+                    self.assertEqual(3, self.lock.readers)
+                    self.assertFalse(self.lock.writer)
+
+                self.assertEqual(2, self.lock.readers)
+                self.assertFalse(self.lock.writer)
+
+            self.assertEqual(1, self.lock.readers)
+            self.assertFalse(self.lock.writer)
+
+        self.assertEqual(0, self.lock.readers)
+        self.assertFalse(self.lock.writer)
+
     def test_writer_blocks_reader(self):
         pass
 
