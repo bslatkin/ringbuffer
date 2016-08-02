@@ -330,22 +330,22 @@ class ReadersWriterLock:
     def __init__(self):
         self.lock = multiprocessing.Lock()
         self.condition = multiprocessing.Condition(self.lock)
-        self.readers = 0
-        self.writer = False
+        self.readers = multiprocessing.RawValue(ctypes.c_uint, 0)
+        self.writer = multiprocessing.RawValue(ctypes.c_bool, False)
 
     def _acquire_reader_lock(self):
         with self.lock:
-            while self.writer:
+            while self.writer.value:
                 self.condition.wait()
 
-            self.readers += 1
+            self.readers.value += 1
 
     def _release_reader_lock(self):
         with self.lock:
-            self.readers -= 1
+            self.readers.value -= 1
 
-            if self.readers == 0:
-                self.condition.notify()
+            if self.readers.value == 0:
+                self.condition.notify_all()
 
     @contextlib.contextmanager
     def for_read(self):
@@ -356,15 +356,15 @@ class ReadersWriterLock:
 
     def _acquire_writer_lock(self):
         with self.lock:
-            while self.writer or self.readers > 0:
+            while self.writer.value or self.readers.value > 0:
                 self.condition.wait()
 
-            self.writer = True
+            self.writer.value = True
 
     def _release_writer_lock(self):
         with self.lock:
-            self.writer = False
-            self.condition.notify()
+            self.writer.value = False
+            self.condition.notify_all()
 
     @contextlib.contextmanager
     def for_write(self):
@@ -380,15 +380,15 @@ class ReadersWriterLock:
         """
         with self.lock:
             # Clear out this reader.
-            self.readers -= 1
+            self.readers.value -= 1
             # Allow the writer thread to get the write lock.
-            self.condition.notify()
+            self.condition.notify_all()
 
         with self.lock:
-            while not self.writer:
+            while not self.writer.value:
                 self.condition.wait()
 
             # The readers now hold the lock.
-            self.readers += 1
+            self.readers.value += 1
             # Wake up any other blocking readers.
-            self.condition.notify()
+            self.condition.notify_all()

@@ -45,51 +45,81 @@ class ReadersWriterLockTest(unittest.TestCase):
     def setUp(self):
         self.lock = ringbuffer.ReadersWriterLock()
 
+    def assert_readers(self, count):
+        self.assertEqual(count, self.lock.readers.value)
+
+    def assert_writer(self, held):
+        self.assertEqual(held, self.lock.writer.value)
+
     def test_read_then_write(self):
-        self.assertEqual(0, self.lock.readers)
-        self.assertFalse(self.lock.writer)
+        self.assert_readers(0)
+        self.assert_writer(False)
 
         with self.lock.for_read():
-            self.assertEqual(1, self.lock.readers)
-            self.assertFalse(self.lock.writer)
+            self.assert_readers(1)
+            self.assert_writer(False)
 
-        self.assertEqual(0, self.lock.readers)
-        self.assertFalse(self.lock.writer)
+        self.assert_readers(0)
+        self.assert_writer(False)
 
         with self.lock.for_write():
-            self.assertEqual(0, self.lock.readers)
-            self.assertTrue(self.lock.writer)
+            self.assert_readers(0)
+            self.assert_writer(True)
 
-        self.assertEqual(0, self.lock.readers)
-        self.assertFalse(self.lock.writer)
+        self.assert_readers(0)
+        self.assert_writer(False)
 
     def test_concurrent_readers(self):
-        self.assertEqual(0, self.lock.readers)
-        self.assertFalse(self.lock.writer)
+        # TODO: use multiple processes for this threads
+        self.assert_readers(0)
+        self.assert_writer(False)
 
         with self.lock.for_read():
-            self.assertEqual(1, self.lock.readers)
-            self.assertFalse(self.lock.writer)
+            self.assert_readers(1)
+            self.assert_writer(False)
 
             with self.lock.for_read():
-                self.assertEqual(2, self.lock.readers)
-                self.assertFalse(self.lock.writer)
+                self.assert_readers(2)
+                self.assert_writer(False)
 
                 with self.lock.for_read():
-                    self.assertEqual(3, self.lock.readers)
-                    self.assertFalse(self.lock.writer)
+                    self.assert_readers(3)
+                    self.assert_writer(False)
 
-                self.assertEqual(2, self.lock.readers)
-                self.assertFalse(self.lock.writer)
+                self.assert_readers(2)
+                self.assert_writer(False)
 
-            self.assertEqual(1, self.lock.readers)
-            self.assertFalse(self.lock.writer)
+            self.assert_readers(1)
+            self.assert_writer(False)
 
-        self.assertEqual(0, self.lock.readers)
-        self.assertFalse(self.lock.writer)
+        self.assert_readers(0)
+        self.assert_writer(False)
+
+    def _async(self, func):
+        event = multiprocessing.Event()
+        process = multiprocessing.Process(target=func, args=(event,))
+        process.start()
+        event.wait()
+        return process
 
     def test_writer_blocks_reader(self):
-        pass
+        with self.lock.for_write():
+            def test(event):
+                self.assert_readers(0)
+                self.assert_writer(True)
+
+                event.set()
+
+                with self.lock.for_read():
+                    self.assert_readers(1)
+                    self.assert_writer(False)
+
+            p = self._async(test)
+
+        p.join()
+
+        self.assert_readers(0)
+        self.assert_writer(False)
 
     def test_writer_blocks_multiple_readers(self):
         pass
