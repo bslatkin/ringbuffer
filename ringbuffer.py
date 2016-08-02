@@ -9,6 +9,7 @@ if the buffer is full.
 """
 
 import ctypes
+import contextlib
 import functools
 import multiprocessing
 import struct
@@ -97,11 +98,17 @@ class RingBuffer:
         """
         self.slot_count = slot_count
         self.array = SlotArray(slot_bytes=slot_bytes, slot_count=slot_count)
+        self.lock = ReadersWriterLock()
+        # Each reading process may modify its own Pointer while the read
+        # lock is being held. Each reading process can also load the position
+        # of the writer, but not load any other readers. Each reading process
+        # can also load the value of the 'active' count.
+        self.readers = []
+        # The writer can load and store the Pointer of all the reader Pointers
+        # or the writer Pointer while the write lock is held. It can also load
+        # and store the value of the 'active' acount.
         self.writer = Pointer(self.slot_count)
         self.active = multiprocessing.RawValue(ctypes.c_uint, 0)
-        self.readers = []
-        self.lock = multiprocessing.Lock()
-        self.condition = multiprocessing.Condition(self.lock)
 
     def new_reader(self):
         """Returns a new unique reader into the buffer.
@@ -111,7 +118,7 @@ class RingBuffer:
         enforce this policy, no readers may be allocated after the first
         write has occurred.
         """
-        with self.lock:
+        with self.lock.for_write():
             writer_position = self.writer.get()
             if writer_position.counter > 0:
                 raise MustCreatedReadersBeforeWritingError
@@ -127,7 +134,7 @@ class RingBuffer:
         indicate that this writer has finished and will not write any more
         data into the ring.
         """
-        with self.lock:
+        with self.lock.for_write():
             self.active.value += 1
 
     def _has_write_conflict(self, position):
@@ -163,7 +170,7 @@ class RingBuffer:
                 force_reader_sync() if you need to force the readers to
                 catch up, but beware that means they will miss data.
         """
-        with self.condition:
+        with self.lock.for_write():
             if not self.active.value:
                 raise AlreadyClosedError
 
@@ -173,8 +180,6 @@ class RingBuffer:
 
             self.array[position.index] = data
             self.writer.increment()
-
-            self.condition.notify_all()
 
     def _has_read_conflict(self, reader_position):
         writer_position = self.writer.get()
@@ -210,7 +215,7 @@ class RingBuffer:
                 all the data in the ring buffer and would need to block in
                 order to wait for new data to arrive.
         """
-        with self.lock:
+        with self.lock.for_read():
             return self._try_read_no_lock(reader)
 
     def blocking_read(self, reader):
@@ -228,16 +233,16 @@ class RingBuffer:
             WriterFinishedError: If the RingBuffer was closed while waiting
                 to read the next operation.
         """
-        with self.condition:
+        with self.lock.for_read():
             while True:
                 try:
                     return self._try_read_no_lock(reader)
                 except WaitingForWriterError:
-                    self.condition.wait()
+                    self.lock.wait_for_write()
 
     def force_reader_sync(self):
         """Forces all readers to skip to the position of the writer."""
-        with self.condition:
+        with self.lock.for_write():
             writer_position = self.writer.get()
 
             for reader in self.readers:
@@ -245,9 +250,6 @@ class RingBuffer:
 
             for reader in self.readers:
                 p = reader.get()
-                print('Reader %r: counter: %d' % (reader, p.counter))
-
-            self.condition.notify_all()
 
     def writer_done(self):
         """Called by the writer when no more data is expected to be written.
@@ -257,9 +259,8 @@ class RingBuffer:
         exception will be raised by any blocking read calls or subsequent
         calls to read.
         """
-        with self.condition:
+        with self.lock.for_write():
             self.active.value -= 1
-            self.condition.notify_all()
 
 
 class SlotArray:
@@ -307,3 +308,87 @@ class SlotArray:
 
     def __len__(self):
         return self.slot_count
+
+
+class ReadersWriterLock:
+    """Multiprocessing-compatible Readers/Writer lock.
+
+    The algorithm:
+    https://en.wikipedia.org/wiki/Readers%E2%80%93writer_lock#Using_a_condition_variable_and_a_mutex
+
+    Background on the Kernel:
+    https://www.kernel.org/doc/Documentation/memory-barriers.txt
+
+    sem_wait on Linux uses NPTL, which uses futexes:
+    https://github.com/torvalds/linux/blob/master/kernel/futex.c
+
+    Notably, futexes use the smp_mb() memory fence, which is a general write
+    barrier, meaning we can assume that all memory reads and writes before
+    a barrier will complete before reads and writes after the barrier.
+    """
+
+    def __init__(self):
+        self.lock = multiprocessing.Lock()
+        self.condition = multiprocessing.Condition(self.lock)
+        self.readers = 0
+        self.writer = False
+
+    def _acquire_reader_lock(self):
+        with self.lock:
+            while self.writer:
+                self.condition.wait()
+
+            self.readers += 1
+
+    def _release_reader_lock(self):
+        with self.lock:
+            self.readers -= 1
+
+            if self.readers == 0:
+                self.condition.notify()
+
+    @contextlib.contextmanager
+    def for_read(self):
+        """Acquire the lock for reading."""
+        self._acquire_reader_lock()
+        yield
+        self._release_reader_lock()
+
+    def _acquire_writer_lock(self):
+        with self.lock:
+            while self.writer or self.readers > 0:
+                self.condition.wait()
+
+            self.writer = True
+
+    def _release_writer_lock(self):
+        with self.lock:
+            self.writer = False
+            self.condition.notify()
+
+    @contextlib.contextmanager
+    def for_write(self):
+        """Acquire the lock for writing reading."""
+        self._acquire_writer_lock()
+        yield
+        self._release_writer_lock()
+
+    def wait_for_write(self):
+        """Block until a writer has acuqired and released the lock.
+
+        Must be called while the read lock is already held.
+        """
+        with self.lock:
+            # Clear out this reader.
+            self.readers -= 1
+            # Allow the writer thread to get the write lock.
+            self.condition.notify()
+
+        with self.lock:
+            while not self.writer:
+                self.condition.wait()
+
+            # The readers now hold the lock.
+            self.readers += 1
+            # Wake up any other blocking readers.
+            self.condition.notify()

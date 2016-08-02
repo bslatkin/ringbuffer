@@ -40,6 +40,51 @@ class SlotArrayTest(unittest.TestCase):
             pass
 
 
+class ReadersWriterLockTest(unittest.TestCase):
+
+    def setUp(self):
+        self.lock = ringbuffer.ReadersWriterLock()
+
+    def test_read_then_write(self):
+        self.assertEqual(0, self.lock.readers)
+        self.assertFalse(self.lock.writer)
+
+        with self.lock.for_read():
+            self.assertEqual(1, self.lock.readers)
+            self.assertFalse(self.lock.writer)
+
+        self.assertEqual(0, self.lock.readers)
+        self.assertFalse(self.lock.writer)
+
+        with self.lock.for_write():
+            self.assertEqual(0, self.lock.readers)
+            self.assertTrue(self.lock.writer)
+
+        self.assertEqual(0, self.lock.readers)
+        self.assertFalse(self.lock.writer)
+
+    def test_writer_blocks_reader(self):
+        pass
+
+    def test_writer_blocks_multiple_readers(self):
+        pass
+
+    def test_reader_blocks_writer(self):
+        pass
+
+    def test_multiple_readers_block_writer(self):
+        pass
+
+    def test_multiple_writers_block_each_other(self):
+        pass
+
+    def test_wait_for_write(self):
+        pass
+
+    def test_wait_for_write_without_lock(self):
+        pass
+
+
 class Expecter:
 
     def __init__(self, ring, pointer, testcase):
