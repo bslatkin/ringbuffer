@@ -4,6 +4,7 @@ import ctypes
 import gc
 import logging
 import multiprocessing
+import os
 import queue
 import threading
 import time
@@ -44,85 +45,123 @@ class ReadersWriterLockTest(unittest.TestCase):
 
     def setUp(self):
         self.lock = ringbuffer.ReadersWriterLock()
+        self.assert_unlocked()
+        self.result_queues = {}
+
+    def assert_unlocked(self):
+        self.assertEqual(0, self.lock.readers.value)
+        self.assertFalse(self.lock.writer.value)
 
     def assert_readers(self, count):
         self.assertEqual(count, self.lock.readers.value)
+        self.assertFalse(self.lock.writer.value)
 
-    def assert_writer(self, held):
-        self.assertEqual(held, self.lock.writer.value)
+    def assert_writer(self):
+        self.assertEqual(0, self.lock.readers.value)
+        self.assertTrue(self.lock.writer.value)
+
+    def reader_count(self):
+        return self.lock.readers.value
+
+    def async(self, func):
+        def wrapper(result_queue):
+            result = func()
+            result_queue.put(result)
+
+        result_queue = multiprocessing.Queue()
+        process = multiprocessing.Process(
+            target=wrapper,
+            args=(result_queue,))
+
+        self.result_queues[process] = result_queue
+
+        process.start()
+        return process
+
+    def get_result(self, process):
+        process.join()
+        return self.result_queues[process].get()
 
     def test_read_then_write(self):
-        self.assert_readers(0)
-        self.assert_writer(False)
-
         with self.lock.for_read():
             self.assert_readers(1)
-            self.assert_writer(False)
 
-        self.assert_readers(0)
-        self.assert_writer(False)
+        self.assert_unlocked()
 
         with self.lock.for_write():
-            self.assert_readers(0)
-            self.assert_writer(True)
+            self.assert_writer()
 
-        self.assert_readers(0)
-        self.assert_writer(False)
+        self.assert_unlocked()
 
-    def test_concurrent_readers(self):
-        # TODO: use multiple processes for this threads
-        self.assert_readers(0)
-        self.assert_writer(False)
-
+    def test_reentrant_readers(self):
         with self.lock.for_read():
             self.assert_readers(1)
-            self.assert_writer(False)
 
             with self.lock.for_read():
                 self.assert_readers(2)
-                self.assert_writer(False)
 
                 with self.lock.for_read():
                     self.assert_readers(3)
-                    self.assert_writer(False)
 
                 self.assert_readers(2)
-                self.assert_writer(False)
 
             self.assert_readers(1)
-            self.assert_writer(False)
 
-        self.assert_readers(0)
-        self.assert_writer(False)
-
-    def _async(self, func):
-        event = multiprocessing.Event()
-        process = multiprocessing.Process(target=func, args=(event,))
-        process.start()
-        event.wait()
-        return process
+        self.assert_unlocked()
 
     def test_writer_blocks_reader(self):
         with self.lock.for_write():
-            def test(event):
-                self.assert_readers(0)
-                self.assert_writer(True)
+            event = multiprocessing.Event()
 
+            def test():
+                self.assert_writer()
+
+                # Caller will block until this event is released.
                 event.set()
 
                 with self.lock.for_read():
                     self.assert_readers(1)
-                    self.assert_writer(False)
+                    return 'okay'
 
-            p = self._async(test)
+            r = self.async(test)
 
-        p.join()
+            # Wait until we can confirm that the reader is locked out.
+            event.wait()
+            self.assert_writer()
 
-        self.assert_readers(0)
-        self.assert_writer(False)
+        self.assertEqual('okay', self.get_result(r))
+        self.assert_unlocked()
 
     def test_writer_blocks_multiple_readers(self):
-        pass
+        with self.lock.for_write():
+            before_read = multiprocessing.Barrier(3)
+            during_read = multiprocessing.Barrier(3)
+            after_read = multiprocessing.Barrier(3)
+
+            def test():
+                self.assert_writer()
+
+                before_read.wait()
+
+                with self.lock.for_read():
+                    during_read.wait()
+
+                after_read.wait()
+
+            r1 = self.async(test)
+            r2 = self.async(test)
+
+            # Wait until we can confirm that all readers are locked out
+            before_read.wait()
+            self.assert_writer()
+
+        # Wait until all readers have the readers lock simultaneously.
+        during_read.wait()
+        self.assert_readers(2)
+
+        # Allow all readers to finish, at which point the lock should be open.
+        after_read.wait()
+        self.assert_unlocked()
 
     def test_reader_blocks_writer(self):
         pass
