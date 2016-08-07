@@ -4,7 +4,7 @@ The [`RingBuffer`](ringbuffer.py) data structure's performance is primarily boun
 
 For examples of how it all fits together, look at [example_numpy.py](example_numpy.py) and [example_ctypes.py](example_ctypes.py).
 
-On an old MacBook, the ring buffer can easily do 2 gigabytes per second of transfer when using large slot sizes (~100MB), a relatively low number of writes per second (~24), and a single reader/writer pair. As you increase the number of writes per second the performance degrades proportionately. However, increasing the number of readers has a minimal effect because multiple readers can hold the read lock at the same time.
+On an old MacBook, the ring buffer can easily do 2 gigabytes per second of transfer when using large slot sizes (~100MB), a relatively low number of writes per second (~24), and a single reader/writer pair. As you increase the number of writes per second the performance degrades proportionately due to the lock. However, increasing the number of readers has a minimal effect (when the slot sizes are ~10MB) because multiple readers can hold the read lock at the same time.
 
 [![Build Status](https://travis-ci.org/bslatkin/ringbuffer.svg?branch=master)](https://travis-ci.org/bslatkin/ringbuffer)
 
