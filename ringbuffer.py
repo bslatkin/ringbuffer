@@ -394,5 +394,6 @@ class ReadersWriterLock:
             if self.readers.value == 0:
                 raise InternalLockingError
             self.readers.value -= 1
+            self.writer_condition.notify()
             self.readers_condition.wait()
             self.readers.value += 1
