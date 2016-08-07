@@ -542,10 +542,10 @@ class RingBufferTestBase:
         writer.write(b'first write')
         reader.expect_read(b'first write', blocking=blocking)
 
-    def test_read_ahead_of_writes_blocking(self):
+    def test_read_ahead_of_writes_blocking(self):  # Busted
         self._do_read_ahead_of_writes(True)
 
-    def test_read_ahead_of_writes_non_blocking(self):
+    def test_read_ahead_of_writes_non_blocking(self):  # Busted
         self._do_read_ahead_of_writes(False)
 
     def _do_two_reads_one_behind_one_ahead(self, blocking):
@@ -568,7 +568,7 @@ class RingBufferTestBase:
     def test_two_reads_one_behind_one_ahead_non_blocking(self):
         self._do_two_reads_one_behind_one_ahead(False)
 
-    def test_write_conflict_first_slot(self):
+    def test_write_conflict_first_slot(self):  # Busted
         reader = self.new_reader()
         writer = self.new_writer()
         self.start_proxies()
@@ -592,7 +592,7 @@ class RingBufferTestBase:
         reader.expect_index(0)
         reader.expect_read(b'now it works')
 
-    def test_write_conflict_last_slot(self):
+    def test_write_conflict_last_slot(self):  # Busted
         reader = self.new_reader()
         writer = self.new_writer()
         self.start_proxies()
@@ -684,10 +684,10 @@ class RingBufferTestBase:
 
         reader.expect_writer_finished(blocking=blocking)
 
-    def test_close_after_read_blocking(self):
+    def test_close_after_read_blocking(self):  # Busted
         self._do_close_after_read(True)
 
-    def test_close_after_read_non_blocking(self):
+    def test_close_after_read_non_blocking(self):  # Busted
         self._do_close_after_read(False)
 
     def test_close_then_write(self):
