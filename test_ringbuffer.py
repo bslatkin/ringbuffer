@@ -219,13 +219,53 @@ class ReadersWriterLockTest(unittest.TestCase):
         self.assert_unlocked()
 
     def test_multiple_writers_block_each_other(self):
-        pass
+        with self.lock.for_write():
+            before_write = multiprocessing.Barrier(2)
+
+            def test():
+                before_write.wait()
+
+                with self.lock.for_write():
+                    self.assert_writer()
+                    return 'written'
+
+            writer = self.async(test)
+
+            before_write.wait()
+            self.assert_writer()
+
+        self.assertEqual('written', self.get_result(writer))
+        self.assert_unlocked()
 
     def test_wait_for_write(self):
-        pass
+        event = multiprocessing.Event()
+        wait_count = 0
+
+        with self.lock.for_read():
+
+            def test():
+                with self.lock.for_write():
+                    self.assert_writer()
+                    event.set()
+                    return 'written'
+
+            writer = self.async(test)
+
+            while not event.is_set():
+                self.assert_readers(1)
+                wait_count += 1
+                self.lock.wait_for_write()
+                self.assert_readers(1)
+
+        self.assertEqual('written', self.get_result(writer))
+        self.assert_unlocked()
+        self.assertLessEqual(wait_count, 2)
 
     def test_wait_for_write_without_lock(self):
-        pass
+        self.assert_unlocked()
+        self.assertRaises(
+            ringbuffer.InternalLockingError,
+            self.lock.wait_for_write)
 
 
 class Expecter:

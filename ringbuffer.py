@@ -43,6 +43,10 @@ class MustCreatedReadersBeforeWritingError(Error):
     pass
 
 
+class InternalLockingError(Error):
+    pass
+
+
 class Position:
 
     def __init__(self, slot_count):
@@ -330,14 +334,15 @@ class ReadersWriterLock:
 
     def __init__(self):
         self.lock = multiprocessing.Lock()
-        self.condition = multiprocessing.Condition(self.lock)
+        self.readers_condition = multiprocessing.Condition(self.lock)
+        self.writer_condition = multiprocessing.Condition(self.lock)
         self.readers = multiprocessing.RawValue(ctypes.c_uint, 0)
         self.writer = multiprocessing.RawValue(ctypes.c_bool, False)
 
     def _acquire_reader_lock(self):
         with self.lock:
             while self.writer.value:
-                self.condition.wait()
+                self.readers_condition.wait()
 
             self.readers.value += 1
 
@@ -346,7 +351,7 @@ class ReadersWriterLock:
             self.readers.value -= 1
 
             if self.readers.value == 0:
-                self.condition.notify_all()
+                self.writer_condition.notify()
 
     @contextlib.contextmanager
     def for_read(self):
@@ -358,14 +363,15 @@ class ReadersWriterLock:
     def _acquire_writer_lock(self):
         with self.lock:
             while self.writer.value or self.readers.value > 0:
-                self.condition.wait()
+                self.writer_condition.wait()
 
             self.writer.value = True
 
     def _release_writer_lock(self):
         with self.lock:
             self.writer.value = False
-            self.condition.notify_all()
+            self.readers_condition.notify_all()
+            self.writer_condition.notify()
 
     @contextlib.contextmanager
     def for_write(self):
@@ -375,21 +381,14 @@ class ReadersWriterLock:
         self._release_writer_lock()
 
     def wait_for_write(self):
-        """Block until a writer has acuqired and released the lock.
+        """Block until a writer has notified readers.
 
-        Must be called while the read lock is already held.
+        Must be called while the read lock is already held. May return
+        spuriously before the writer actually did something.
         """
         with self.lock:
-            # Clear out this reader.
+            if self.readers.value == 0:
+                raise InternalLockingError
             self.readers.value -= 1
-            # Allow the writer thread to get the write lock.
-            self.condition.notify_all()
-
-        with self.lock:
-            while not self.writer.value:
-                self.condition.wait()
-
-            # The readers now hold the lock.
+            self.readers_condition.wait()
             self.readers.value += 1
-            # Wake up any other blocking readers.
-            self.condition.notify_all()
