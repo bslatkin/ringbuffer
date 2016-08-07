@@ -32,10 +32,10 @@ Example that shows that too many readers will slow the system down due to lock c
 ./perf_test_ringbuffer.py \
     --debug \
     --slot-bytes=1000000 \
-    --slots=50 \
+    --slots=10 \
     --duration-seconds=10 \
     --writes-per-second=24 \
-    --readers=50
+    --readers=100
 ```
 
 Example that shows how the writer will fall behind its target rate when the locking overhead becomes too large:
