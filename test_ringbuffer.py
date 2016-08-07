@@ -137,6 +137,7 @@ class ReadersWriterLockTest(unittest.TestCase):
             before_read = multiprocessing.Barrier(3)
             during_read = multiprocessing.Barrier(3)
             after_read = multiprocessing.Barrier(3)
+            after_unlock = multiprocessing.Barrier(3)
 
             def test():
                 self.assert_writer()
@@ -145,8 +146,9 @@ class ReadersWriterLockTest(unittest.TestCase):
 
                 with self.lock.for_read():
                     during_read.wait()
+                    after_read.wait()
 
-                after_read.wait()
+                after_unlock.wait()
 
             r1 = self.async(test)
             r2 = self.async(test)
@@ -158,13 +160,44 @@ class ReadersWriterLockTest(unittest.TestCase):
         # Wait until all readers have the readers lock simultaneously.
         during_read.wait()
         self.assert_readers(2)
+        after_read.wait()
 
         # Allow all readers to finish, at which point the lock should be open.
-        after_read.wait()
+        after_unlock.wait()
         self.assert_unlocked()
 
     def test_reader_blocks_writer(self):
-        pass
+        with self.lock.for_read():
+            before_write = multiprocessing.Barrier(2)
+            during_write = multiprocessing.Barrier(2)
+            after_write = multiprocessing.Barrier(2)
+            after_unlock = multiprocessing.Barrier(2)
+
+            def test():
+                self.assert_readers(1)
+
+                before_write.wait()
+
+                with self.lock.for_write():
+                    during_write.wait()
+                    after_write.wait()
+
+                after_unlock.wait()
+
+            writer = self.async(test)
+
+            # Wait until we can confirm that all writers are locked out.
+            before_write.wait()
+            self.assert_readers(1)
+
+        # Wait until the writer gets the lock.
+        during_write.wait()
+        self.assert_writer()
+        after_write.wait()
+
+        # Wait for the writer to finish; the lock should be open.
+        after_unlock.wait()
+        self.assert_unlocked()
 
     def test_multiple_readers_block_writer(self):
         pass
