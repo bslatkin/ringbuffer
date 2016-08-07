@@ -121,7 +121,7 @@ class ReadersWriterLockTest(unittest.TestCase):
 
                 with self.lock.for_read():
                     self.assert_readers(1)
-                    return 'okay'
+                    return 'read'
 
             r = self.async(test)
 
@@ -129,15 +129,14 @@ class ReadersWriterLockTest(unittest.TestCase):
             event.wait()
             self.assert_writer()
 
-        self.assertEqual('okay', self.get_result(r))
+        self.assertEqual('read', self.get_result(r))
         self.assert_unlocked()
 
     def test_writer_blocks_multiple_readers(self):
         with self.lock.for_write():
             before_read = multiprocessing.Barrier(3)
-            during_read = multiprocessing.Barrier(3)
-            after_read = multiprocessing.Barrier(3)
-            after_unlock = multiprocessing.Barrier(3)
+            during_read = multiprocessing.Barrier(2)
+            after_read = multiprocessing.Barrier(2)
 
             def test():
                 self.assert_writer()
@@ -146,9 +145,9 @@ class ReadersWriterLockTest(unittest.TestCase):
 
                 with self.lock.for_read():
                     during_read.wait()
+                    value = self.reader_count()
                     after_read.wait()
-
-                after_unlock.wait()
+                    return value
 
             r1 = self.async(test)
             r2 = self.async(test)
@@ -157,13 +156,8 @@ class ReadersWriterLockTest(unittest.TestCase):
             before_read.wait()
             self.assert_writer()
 
-        # Wait until all readers have the readers lock simultaneously.
-        during_read.wait()
-        self.assert_readers(2)
-        after_read.wait()
-
-        # Allow all readers to finish, at which point the lock should be open.
-        after_unlock.wait()
+        self.assertEqual(2, self.get_result(r1))
+        self.assertEqual(2, self.get_result(r2))
         self.assert_unlocked()
 
     def test_reader_blocks_writer(self):
@@ -179,10 +173,8 @@ class ReadersWriterLockTest(unittest.TestCase):
                 before_write.wait()
 
                 with self.lock.for_write():
-                    during_write.wait()
-                    after_write.wait()
-
-                after_unlock.wait()
+                    self.assert_writer()
+                    return 'written'
 
             writer = self.async(test)
 
@@ -190,17 +182,41 @@ class ReadersWriterLockTest(unittest.TestCase):
             before_write.wait()
             self.assert_readers(1)
 
-        # Wait until the writer gets the lock.
-        during_write.wait()
-        self.assert_writer()
-        after_write.wait()
-
-        # Wait for the writer to finish; the lock should be open.
-        after_unlock.wait()
+        self.assertEqual('written', self.get_result(writer))
         self.assert_unlocked()
 
     def test_multiple_readers_block_writer(self):
-        pass
+        with self.lock.for_read():
+            before_read = multiprocessing.Barrier(3)
+            after_read = multiprocessing.Barrier(2)
+
+            def test_reader():
+                self.assert_readers(1)
+
+                with self.lock.for_read():
+                    before_read.wait()
+                    value = self.reader_count()
+                    after_read.wait()
+                    return value
+
+            def test_writer():
+                before_read.wait()
+
+                with self.lock.for_write():
+                    self.assert_writer()
+                    return 'written'
+
+            reader = self.async(test_reader)
+            writer = self.async(test_writer)
+
+            # Wait for the write to be blocked by multiple readers.
+            before_read.wait()
+            self.assert_readers(2)
+            after_read.wait()
+
+        self.assertEqual(2, self.get_result(reader))
+        self.assertEqual('written', self.get_result(writer))
+        self.assert_unlocked()
 
     def test_multiple_writers_block_each_other(self):
         pass
