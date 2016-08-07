@@ -357,8 +357,10 @@ class ReadersWriterLock:
     def for_read(self):
         """Acquire the lock for reading."""
         self._acquire_reader_lock()
-        yield
-        self._release_reader_lock()
+        try:
+            yield
+        finally:
+            self._release_reader_lock()
 
     def _acquire_writer_lock(self):
         with self.lock:
@@ -377,8 +379,10 @@ class ReadersWriterLock:
     def for_write(self):
         """Acquire the lock for writing reading."""
         self._acquire_writer_lock()
-        yield
-        self._release_writer_lock()
+        try:
+            yield
+        finally:
+            self._release_writer_lock()
 
     def wait_for_write(self):
         """Block until a writer has notified readers.
