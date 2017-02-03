@@ -255,6 +255,15 @@ class RingBuffer:
             for reader in self.readers:
                 p = reader.get()
 
+    def force_single_reader_sync(self, reader):
+        """Forces passed reader to skip to the position of the writer."""
+        with self.lock.for_write():
+            writer_position = self.writer.get()
+
+            reader.set(writer_position.counter)
+
+            p = reader.get()
+
     def writer_done(self):
         """Called by the writer when no more data is expected to be written.
 

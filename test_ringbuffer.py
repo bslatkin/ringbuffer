@@ -382,6 +382,9 @@ class Expecter:
     def force_reader_sync(self):
         self.ring.force_reader_sync()
 
+    def force_single_reader_sync(self, reader):
+        self.ring.force_single_reader_sync(reader)
+
     def expect_try_read_type(self, type_or_class):
         data = self.ring.try_read(self.pointer)
         self.testcase.assertTrue(isinstance(data, type_or_class))
@@ -784,6 +787,28 @@ class RingBufferTestBase:
         writer.force_reader_sync()
         r1.expect_index(3)
         r2.expect_index(3)
+
+    """ This doesn't work :'(
+    def test_force_single_reader_sync(self):
+        writer = self.new_writer()
+        r1 = self.new_reader()
+        r2 = self.new_reader()
+        self.start_proxies()
+
+        writer.write(b'one')
+        writer.write(b'two')
+        writer.write(b'three')
+
+        writer.expect_index(3)
+        r1.expect_index(0)
+        r2.expect_index(0)
+
+        writer.force_single_reader_sync(r1)
+        r1.expect_index(3)
+        r2.expect_index(0)
+        writer.force_single_reader_sync(r2)
+        r2.expect_index(3)
+    """
 
     def _do_multiple_writers(self, blocking):
         w1 = self.new_writer()
